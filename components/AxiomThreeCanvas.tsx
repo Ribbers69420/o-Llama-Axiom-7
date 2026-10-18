@@ -548,21 +548,66 @@ export default function AxiomThreeCanvas({
     mainChassisMesh.receiveShadow = !isHeadless;
     axiomBodyPivot.add(mainChassisMesh);
 
-    // Part 2, 3, 4: Control Panel Buttons (Yellow #FFD600, Red #FF1744, Green LED #00C853)
-    const btnGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.08, 16);
-    btnGeo.rotateX(Math.PI / 2);
-    const yellowBtn = new THREE.Mesh(btnGeo, yellowBtnMat);
-    yellowBtn.position.set(-0.35, 0.86, 0.56);
-    axiomBodyPivot.add(yellowBtn);
+    // Part 2, 3, 4: o-Llama / AXIOM-7 Signature Chest Controls
+    // Signature Yellow Cross / Plus (+) Button on Left Chest (#FFD600)
+    const yellowPlusGroup = new THREE.Group();
+    yellowPlusGroup.position.set(-0.34, 0.84, 0.56);
+    const plusVertGeo = new THREE.BoxGeometry(0.11, 0.32, 0.08);
+    const plusHorizGeo = new THREE.BoxGeometry(0.32, 0.11, 0.08);
+    yellowPlusGroup.add(new THREE.Mesh(plusVertGeo, yellowBtnMat));
+    yellowPlusGroup.add(new THREE.Mesh(plusHorizGeo, yellowBtnMat));
+    axiomBodyPivot.add(yellowPlusGroup);
 
+    // Control Lights on Right Chest (Red Button #FF1744 & Signature Green LED #00C853)
+    const btnGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.08, 16);
+    btnGeo.rotateX(Math.PI / 2);
     const redBtn = new THREE.Mesh(btnGeo, redBtnMat);
-    redBtn.position.set(0.0, 0.86, 0.56);
+    redBtn.position.set(0.12, 0.74, 0.56);
     axiomBodyPivot.add(redBtn);
 
-    const ledGeo = new THREE.SphereGeometry(0.08, 12, 12);
+    const ledGeo = new THREE.SphereGeometry(0.085, 12, 12);
     const greenLed = new THREE.Mesh(ledGeo, greenLedMat);
-    greenLed.position.set(0.35, 0.72, 0.55);
+    greenLed.position.set(0.36, 0.92, 0.55);
     axiomBodyPivot.add(greenLed);
+
+    // Articulated Left & Right Claw Grippers (o-Llama signature short gripper arms)
+    const leftGripperGroup = new THREE.Group();
+    leftGripperGroup.position.set(-0.88, 0.88, 0.18);
+    const armSegmentGeo = new THREE.BoxGeometry(0.22, 0.38, 0.28);
+    const clawProngGeo = new THREE.BoxGeometry(0.08, 0.2, 0.24);
+    const leftArmSeg = new THREE.Mesh(armSegmentGeo, bezelMat);
+    leftGripperGroup.add(leftArmSeg);
+    const leftProngL = new THREE.Mesh(clawProngGeo, frameDarkMat);
+    leftProngL.position.set(-0.08, -0.24, 0.12);
+    leftGripperGroup.add(leftProngL);
+    const leftProngR = new THREE.Mesh(clawProngGeo, frameDarkMat);
+    leftProngR.position.set(0.08, -0.24, 0.12);
+    leftGripperGroup.add(leftProngR);
+    axiomBodyPivot.add(leftGripperGroup);
+
+    const rightGripperGroup = new THREE.Group();
+    rightGripperGroup.position.set(0.88, 0.88, 0.18);
+    const rightArmSeg = new THREE.Mesh(armSegmentGeo, bezelMat);
+    rightGripperGroup.add(rightArmSeg);
+    const rightProngL = new THREE.Mesh(clawProngGeo, frameDarkMat);
+    rightProngL.position.set(-0.08, -0.24, 0.12);
+    rightGripperGroup.add(rightProngL);
+    const rightProngR = new THREE.Mesh(clawProngGeo, frameDarkMat);
+    rightProngR.position.set(0.08, -0.24, 0.12);
+    rightGripperGroup.add(rightProngR);
+    axiomBodyPivot.add(rightGripperGroup);
+
+    // Deployable 3D Mini-Laptop for EX-07 Working ("Arbejder") State
+    const laptopGroup = new THREE.Group();
+    laptopGroup.position.set(0, 0.82, 0.82);
+    const laptopBase = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.06, 0.65), bezelMat);
+    laptopGroup.add(laptopBase);
+    const laptopScreen = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.58, 0.06), frameDarkMat);
+    laptopScreen.position.set(0, 0.28, 0.28);
+    laptopScreen.rotation.x = -0.25;
+    laptopGroup.add(laptopScreen);
+    laptopGroup.visible = false;
+    axiomBodyPivot.add(laptopGroup);
 
     // Part 5: Neck Pivot (Cylindrical joint 1 unit)
     const neckGeo = new THREE.CylinderGeometry(0.28, 0.32, 0.32, 20);
@@ -580,6 +625,11 @@ export default function AxiomThreeCanvas({
     headHousingMesh.castShadow = !isHeadless;
     headGroup.add(headHousingMesh);
 
+    // Top Red Sensor Cap on Head (from o-Llama spritesheet)
+    const topSensorCap = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.1, 0.36), redBtnMat);
+    topSensorCap.position.set(0, 0.66, 0);
+    headGroup.add(topSensorCap);
+
     const headBezelGeo = new THREE.BoxGeometry(1.68, 1.08, 0.08);
     const headBezelMesh = new THREE.Mesh(headBezelGeo, frameDarkMat);
     headBezelMesh.position.set(0, 0, 0.51);
@@ -589,6 +639,16 @@ export default function AxiomThreeCanvas({
     const screenMesh = new THREE.Mesh(screenGeo, screenFaceMat);
     screenMesh.position.set(0, 0, 0.56);
     headGroup.add(screenMesh);
+
+    // Secondary Rear Diagnostic Screen so AXIOM-7's active eye expression is also visible from behind in 3rd-person chase cam
+    const rearBezelMesh = new THREE.Mesh(headBezelGeo, frameDarkMat);
+    rearBezelMesh.position.set(0, 0, -0.51);
+    headGroup.add(rearBezelMesh);
+
+    const rearScreenMesh = new THREE.Mesh(screenGeo, screenFaceMat);
+    rearScreenMesh.position.set(0, 0, -0.56);
+    rearScreenMesh.rotation.y = Math.PI;
+    headGroup.add(rearScreenMesh);
 
     // Part 8: Monitor Side Tuner Knob (Right side knob for Version B/C)
     const sideKnobGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.22, 16);
@@ -1349,6 +1409,35 @@ export default function AxiomThreeCanvas({
       headGroup.scale.x = dampValue(headGroup.scale.x, targetHeadScaleX, 12, dt);
       headGroup.scale.y = dampValue(headGroup.scale.y, targetHeadScaleY, 12, dt);
 
+      // o-Llama Body Language Postures (Grippers, Head Tilt & Mini-Laptop in EX-07)
+      const isWorking = currentProps.expression === 'EX-07';
+      const isFocused = currentProps.expression === 'EX-02';
+      const isHappy = currentProps.expression === 'EX-06' || simState.celebrationTimer > 0;
+      laptopGroup.visible = isWorking;
+
+      // Head tilt per expression (curious slight tilt, focused inviting, happy nod)
+      const targetHeadRotZ =
+        currentProps.expression === 'EX-01'
+          ? 0.07 * Math.sin(elapsed * 1.5)
+          : isHappy
+          ? 0.1 * Math.sin(elapsed * 8)
+          : 0;
+      headGroup.rotation.z = dampValue(headGroup.rotation.z, targetHeadRotZ, 10, dt);
+
+      // Left & Right Claw Gripper postures
+      leftGripperGroup.rotation.x = dampValue(
+        leftGripperGroup.rotation.x,
+        isHappy ? -2.2 : isFocused ? -0.75 : isWorking ? -0.55 : -0.15,
+        10,
+        dt
+      );
+      rightGripperGroup.rotation.x = dampValue(
+        rightGripperGroup.rotation.x,
+        isHappy ? -2.2 : isWorking ? -0.55 : -0.15,
+        10,
+        dt
+      );
+
       // Update Face CanvasTexture
       drawAxiomScreen(
         currentProps.expression,
@@ -1404,14 +1493,13 @@ export default function AxiomThreeCanvas({
       // STATE-BASED CAMERA & SIMULATION STEP
       // ============================================================================
       if (currentProps.status === 'title') {
-        // Diegetic In-World Awakening Showcase (Scene 1854)
-        axiomRoot.position.set(0, 0, 0);
-        axiomRoot.rotation.y = Math.sin(elapsed * 0.55) * 0.38;
+        // Diegetic In-World Awakening Showcase (Scene 1854) — Framed on Right Third facing camera
+        axiomRoot.position.set(2.2, 0, 1.5);
+        axiomRoot.rotation.y = -0.35 + Math.sin(elapsed * 0.85) * 0.25;
         axiomBodyPivot.position.y = isCosmic ? 0.35 + Math.sin(elapsed * 3) * 0.12 : 0;
 
-        const camAngle = elapsed * 0.22;
-        _camTargetPos.set(Math.sin(camAngle) * 7.2, 3.6, Math.cos(camAngle) * 7.2);
-        _camLookAt.set(-1.1, 1.55, 0);
+        _camTargetPos.set(0.2 + Math.sin(elapsed * 0.35) * 0.8, 2.85, 7.6);
+        _camLookAt.set(0.6, 1.65, 0.5);
         camera.position.lerp(_camTargetPos, 1 - Math.exp(-6 * dt));
         camera.lookAt(_camLookAt);
 

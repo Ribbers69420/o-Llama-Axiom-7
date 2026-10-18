@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import AxiomThreeCanvas, { type ActiveGameplaySnapshot } from '@/components/AxiomThreeCanvas';
 import TruthAnalyzerModal from '@/components/TruthAnalyzerModal';
 import MasterCodexModal from '@/components/MasterCodexModal';
+import OLlamaDesignBookModal from '@/components/OLlamaDesignBookModal';
 import {
   CHAPTER_SCENES,
   CHASSIS_SPECS,
@@ -14,15 +15,18 @@ import {
   type GameStatus,
   type PillarName,
 } from '@/lib/game-rules';
+import type { AppLanguage } from '@/lib/ollama-bible-spec';
 import { soundSynth } from '@/lib/audio-synth';
 import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  Globe,
   Pause,
   Play,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   Volume2,
   VolumeX,
   Zap,
@@ -31,6 +35,7 @@ import {
 const ALL_PILLARS: PillarName[] = ['FACTS', 'EVIDENCE', 'DATA', 'REALITY'];
 
 export default function AxiomGameShellPage() {
+  const [lang, setLang] = useState<AppLanguage>('da');
   const [status, setStatus] = useState<GameStatus>('title');
   const [chapterIndex, setChapterIndex] = useState<number>(0);
   const [chassis, setChassis] = useState<ChassisType>('tank');
@@ -38,6 +43,7 @@ export default function AxiomGameShellPage() {
   const [dockCollapsed, setDockCollapsed] = useState<boolean>(false);
   const [terminalOpen, setTerminalOpen] = useState<boolean>(false);
   const [codexOpen, setCodexOpen] = useState<boolean>(false);
+  const [designBookOpen, setDesignBookOpen] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(false);
 
   const [pulseTriggerCount, setPulseTriggerCount] = useState<number>(0);
@@ -56,6 +62,8 @@ export default function AxiomGameShellPage() {
     pillarsUnlocked: [],
     nearbyTomeClaimIndex: null,
   });
+
+  const isDa = lang === 'da';
 
   // Sync game state to document.body.dataset.state for automated verification
   useEffect(() => {
@@ -103,18 +111,18 @@ export default function AxiomGameShellPage() {
     });
   }, []);
 
-  // Global keyboard shortcuts for Title Start, Chassis (1-3), Terminal (T), Codex (C), Dock (H), Pause (Esc/P)
+  // Global keyboard shortcuts for Title Start, Chassis (1-3), Terminal (T), Design Book (B), Codex (C), Dock (H), Pause (Esc/P)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
-      if (status === 'title') {
+      if (status === 'title' && !terminalOpen && !codexOpen && !designBookOpen) {
         if (e.code === 'Enter' || e.code === 'Space') {
           e.preventDefault();
           handleStartGame();
+          return;
         }
-        return;
       }
 
       if (e.code === 'Digit1') handleSelectChassis('tank');
@@ -123,6 +131,9 @@ export default function AxiomGameShellPage() {
       else if (e.code === 'KeyT') {
         e.preventDefault();
         setTerminalOpen((prev) => !prev);
+      } else if (e.code === 'KeyB') {
+        e.preventDefault();
+        setDesignBookOpen((prev) => !prev);
       } else if (e.code === 'KeyC') {
         e.preventDefault();
         setCodexOpen((prev) => !prev);
@@ -137,17 +148,31 @@ export default function AxiomGameShellPage() {
           setTerminalOpen(false);
           return;
         }
+        if (designBookOpen) {
+          setDesignBookOpen(false);
+          return;
+        }
         if (codexOpen) {
           setCodexOpen(false);
           return;
         }
-        setStatus((prev) => (prev === 'playing' ? 'paused' : prev === 'paused' ? 'playing' : prev));
+        setStatus((prev) =>
+          prev === 'playing' ? 'paused' : prev === 'paused' ? 'playing' : prev
+        );
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [status, terminalOpen, codexOpen, handleStartGame, handleSelectChassis, handleToggleMute]);
+  }, [
+    status,
+    terminalOpen,
+    codexOpen,
+    designBookOpen,
+    handleStartGame,
+    handleSelectChassis,
+    handleToggleMute,
+  ]);
 
   const currentChapter = CHAPTER_SCENES[chapterIndex] || CHAPTER_SCENES[0];
   const currentExprSpec = EXPRESSIONS[expression] || EXPRESSIONS['EX-01'];
@@ -173,7 +198,7 @@ export default function AxiomGameShellPage() {
         chapterIndex={chapterIndex}
         chassis={chassis}
         expression={expression}
-        terminalOpen={terminalOpen}
+        terminalOpen={terminalOpen || designBookOpen}
         codexOpen={codexOpen}
         pulseTriggerCount={pulseTriggerCount}
         verifiedCelebrationCount={verifiedCelebrationCount}
@@ -184,130 +209,168 @@ export default function AxiomGameShellPage() {
         onInspectTomeClaim={() => setTerminalOpen(true)}
       />
 
-      {/* 2. TITLE SCREEN OVERLAY (Diegetic In-World Awakening — Scene 1854) */}
+      {/* 2. TITLE SCREEN OVERLAY (Diegetic In-World Awakening — Scene 1854 + o-Llama Design Book & Production Bible Entry) */}
       {status === 'title' && (
         <section
           aria-label="Title Screen"
-          className="fixed inset-0 z-20 flex flex-col justify-between p-6 sm:p-10 pointer-events-none"
+          className="fixed inset-0 z-20 flex flex-col justify-between p-3 sm:p-8 pointer-events-none overflow-y-auto"
         >
-          {/* Asymmetric Left Negative-Space Lockup */}
-          <div className="max-w-xl bg-[rgba(10,10,18,0.86)] border-2 border-[#00E5FF] rounded-lg p-6 sm:p-8 shadow-2xl pointer-events-auto">
-            {/* Bespoke Inline SVG Title Emblem Lockup */}
-            <svg
-              viewBox="0 0 440 92"
-              className="w-full max-w-[390px] h-auto mb-3"
-              role="img"
-              aria-label="AXIOM-7: Guardian of Truth"
-            >
-              <rect
-                x="2"
-                y="6"
-                width="76"
-                height="62"
-                rx="8"
-                fill="#0A0A0A"
-                stroke="#00E5FF"
-                strokeWidth="3"
-              />
-              <circle cx="26" cy="37" r="11" fill="#00E5FF" />
-              <circle cx="54" cy="37" r="11" fill="#00E5FF" />
-              <rect x="20" y="72" width="16" height="8" fill="#FFD600" />
-              <rect x="44" y="72" width="16" height="8" fill="#FF1744" />
-              <text
-                x="94"
-                y="46"
-                fill="#FFFFFF"
-                fontFamily="var(--font-display), sans-serif"
-                fontWeight="700"
-                fontSize="44"
-                letterSpacing="2"
+          <div className="flex items-start justify-between gap-4">
+            {/* Asymmetric Left Negative-Space Lockup */}
+            <div className="max-w-lg bg-[rgba(10,10,18,0.88)] border-2 border-[#00E5FF] rounded-lg p-4 sm:p-7 shadow-2xl pointer-events-auto">
+              {/* Bespoke Inline SVG Title Emblem Lockup with Yellow Plus (+) Signature */}
+              <svg
+                viewBox="0 0 510 92"
+                className="w-full max-w-[430px] h-auto mb-2.5"
+                role="img"
+                aria-label="o-Llama · AXIOM-7: The Token of Trust"
               >
-                AXIOM-7
-              </text>
-              <text
-                x="96"
-                y="72"
-                fill="#00E5FF"
-                fontFamily="var(--font-mono), monospace"
-                fontWeight="600"
-                fontSize="14"
-                letterSpacing="3.5"
-              >
-                GUARDIAN OF TRUTH · PIXELVERSE-9
-              </text>
-            </svg>
+                <rect
+                  x="2"
+                  y="6"
+                  width="76"
+                  height="56"
+                  rx="8"
+                  fill="#0A0A0A"
+                  stroke="#00E5FF"
+                  strokeWidth="3"
+                />
+                <circle cx="26" cy="34" r="10" fill="#00E5FF" />
+                <circle cx="54" cy="34" r="10" fill="#00E5FF" />
+                {/* Yellow Cross (+) Signature + Green LED + Red Indicator */}
+                <rect x="20" y="68" width="5" height="15" fill="#FFD600" />
+                <rect x="15" y="73" width="15" height="5" fill="#FFD600" />
+                <circle cx="44" cy="75" r="4.5" fill="#00C853" />
+                <circle cx="58" cy="75" r="4.5" fill="#FF1744" />
+                <text
+                  x="94"
+                  y="45"
+                  fill="#FFFFFF"
+                  fontFamily="var(--font-display), sans-serif"
+                  fontWeight="700"
+                  fontSize="40"
+                  letterSpacing="1.5"
+                >
+                  o-Llama · AXIOM-7
+                </text>
+                <text
+                  x="96"
+                  y="72"
+                  fill="#00E5FF"
+                  fontFamily="var(--font-mono), monospace"
+                  fontWeight="600"
+                  fontSize="13"
+                  letterSpacing="2.5"
+                >
+                  THE TOKEN OF TRUST · PIXELVERSE-9
+                </text>
+              </svg>
 
-            <p className="text-sm text-slate-200 leading-relaxed mb-5">
-              Awakened in 2087 to distinguish truth from fiction. Traverse all 6 canonical
-              PIXELVERSE-9 realms, swap dynamically between Tank, Monitor Wizard, and Cosmic
-              chassis forms, and verify claims against the Four Pillars of Truth.
-            </p>
+              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed mb-4">
+                {isDa
+                  ? 'Lille robot. Større udtryk. Udforsk alle 6 kanoniske PIXELVERSE-9 kapitler i 3D, åbn den interaktive o-Llama Designbog (med 8×9 pixel-spritesheet og kropssprog fra 3. okt.) eller dyk ned i Production Bible v1.0.'
+                  : 'Small robot. Bigger expression. Explore all 6 canonical PIXELVERSE-9 chapters in 3D, open the interactive o-Llama Design Book (8×9 pixel spritesheet & Oct 3 postures), or inspect Production Bible v1.0.'}
+              </p>
 
-            {/* Primary Start CTA & Secondary Actions (<= 3 menu actions) */}
-            <div className="flex flex-wrap items-center gap-3 mb-5">
-              <button
-                type="button"
-                data-start="true"
-                onClick={() => handleStartGame(chapterIndex)}
-                className="flex items-center gap-2.5 px-6 py-3 rounded font-bold uppercase tracking-wider text-sm bg-[#00E5FF] hover:bg-[#00B8D4] text-[#050510] shadow-lg transition-transform active:scale-95 cursor-pointer"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Start Mission</span>
-              </button>
+              {/* Primary Start CTA & Interactive Documentation Suites */}
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <button
+                  type="button"
+                  data-start="true"
+                  onClick={() => handleStartGame(chapterIndex)}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded font-bold uppercase tracking-wider text-xs sm:text-sm bg-[#00E5FF] hover:bg-[#00B8D4] text-[#050510] shadow-lg transition-transform active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>{isDa ? 'Start 3D Mission' : 'Start 3D Mission'}</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setTerminalOpen(true)}
-                className="flex items-center gap-2 px-4 py-3 rounded font-semibold text-xs uppercase tracking-wider bg-[#15203E] hover:bg-[#1E2E58] text-[#00E5FF] border border-[#00E5FF]/50 transition-colors cursor-pointer"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Truth Terminal</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setDesignBookOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded font-semibold text-xs uppercase tracking-wider bg-[#15203E] hover:bg-[#1E2E58] text-[#FFD600] border border-[#FFD600]/60 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{isDa ? 'o-Llama Designbog [B]' : 'o-Llama Design Book [B]'}</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setCodexOpen(true)}
-                className="flex items-center gap-2 px-4 py-3 rounded font-semibold text-xs uppercase tracking-wider bg-[#15203E] hover:bg-[#1E2E58] text-[#FFD600] border border-[#FFD600]/50 transition-colors cursor-pointer"
-              >
-                <BookOpen className="w-4 h-4" />
-                <span>Master Codex</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setCodexOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded font-semibold text-xs uppercase tracking-wider bg-[#15203E] hover:bg-[#1E2E58] text-[#00E5FF] border border-[#00E5FF]/50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>{isDa ? 'Production Bible [C]' : 'Production Bible [C]'}</span>
+                </button>
+              </div>
+
+              {/* Chapter Quick-Selector */}
+              <div>
+                <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">
+                  {isDa
+                    ? 'Vælg Kapitel / Scene (1854 – 499)'
+                    : 'Select Campaign Chapter (Scenes 1854 – 499)'}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
+                  {CHAPTER_SCENES.map((ch) => (
+                    <button
+                      key={ch.index}
+                      type="button"
+                      onClick={() => {
+                        setChapterIndex(ch.index);
+                        setChassis(ch.recommendedChassis);
+                        setExpression(ch.defaultExpression);
+                      }}
+                      className={`text-left px-2.5 py-1.5 rounded border text-xs transition-colors cursor-pointer ${
+                        chapterIndex === ch.index
+                          ? 'bg-[#182952] border-[#00E5FF] text-white'
+                          : 'bg-[#090F20] border-slate-700/80 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      <div className="font-mono text-[10px] text-[#FFD600]">
+                        {ch.chapterLabel} · #{ch.sceneIds[0]}
+                      </div>
+                      <div className="font-semibold truncate">{ch.title}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* Chapter Quick-Selector */}
-            <div>
-              <div className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-2">
-                Select Campaign Chapter (Scenes 1854 – 499)
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {CHAPTER_SCENES.map((ch) => (
-                  <button
-                    key={ch.index}
-                    type="button"
-                    onClick={() => {
-                      setChapterIndex(ch.index);
-                      setChassis(ch.recommendedChassis);
-                      setExpression(ch.defaultExpression);
-                    }}
-                    className={`text-left px-2.5 py-2 rounded border text-xs transition-colors cursor-pointer ${
-                      chapterIndex === ch.index
-                        ? 'bg-[#182952] border-[#00E5FF] text-white'
-                        : 'bg-[#090F20] border-slate-700/80 text-slate-300 hover:border-slate-500'
-                    }`}
-                  >
-                    <div className="font-mono text-[10px] text-[#FFD600]">
-                      {ch.chapterLabel} · #{ch.sceneIds[0]}
-                    </div>
-                    <div className="font-semibold truncate">{ch.title}</div>
-                  </button>
-                ))}
-              </div>
+            {/* Top-Right Language Switcher (DA | EN) on Title Screen */}
+            <div className="pointer-events-auto flex items-center gap-2 bg-[rgba(10,10,18,0.88)] border border-slate-700 rounded-lg px-3 py-2">
+              <Globe className="w-4 h-4 text-[#00E5FF]" />
+              <button
+                type="button"
+                onClick={() => setLang('da')}
+                aria-label="Skift sprog til Dansk"
+                className={`px-2 py-1 rounded text-xs font-mono font-bold cursor-pointer ${
+                  lang === 'da'
+                    ? 'bg-[#00E5FF] text-[#050510]'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                DA
+              </button>
+              <button
+                type="button"
+                onClick={() => setLang('en')}
+                aria-label="Switch language to English"
+                className={`px-2 py-1 rounded text-xs font-mono font-bold cursor-pointer ${
+                  lang === 'en'
+                    ? 'bg-[#00E5FF] text-[#050510]'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                EN
+              </button>
             </div>
           </div>
 
           {/* Flat Bottom Control-Hint Line */}
-          <div className="self-center px-5 py-2 rounded bg-[rgba(10,10,18,0.85)] border border-slate-700/80 text-xs font-mono text-slate-200 tracking-wide">
-            WASD Move · Space Pulse Scan · Shift Dash · 1-3 Chassis · T Truth Terminal · Esc Pause
+          <div className="self-center mt-2 px-4 py-1.5 rounded bg-[rgba(10,10,18,0.88)] border border-slate-700/80 text-[11px] sm:text-xs font-mono text-slate-200 tracking-wide text-center">
+            {isDa
+              ? 'WASD Flyt · Space Impuls · Shift Dash · 1-3 Chassis · B Designbog · C Bible · T Sandhedsterminal'
+              : 'WASD Move · Space Pulse Scan · Shift Dash · 1-3 Chassis · B Design Book · C Bible · T Truth Terminal'}
           </div>
         </section>
       )}
@@ -322,9 +385,12 @@ export default function AxiomGameShellPage() {
               {/* Discrete 5 Vitality Sockets */}
               <div>
                 <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">
-                  CORE INTEGRITY (HP)
+                  {isDa ? 'INTEGRITET (HP)' : 'CORE INTEGRITY (HP)'}
                 </div>
-                <div className="flex items-center gap-1.5" aria-label={`Health ${snapshot.hp} of ${snapshot.maxHp}`}>
+                <div
+                  className="flex items-center gap-1.5"
+                  aria-label={`Health ${snapshot.hp} of ${snapshot.maxHp}`}
+                >
                   {Array.from({ length: snapshot.maxHp }).map((_, i) => {
                     const isFull = i < snapshot.hp;
                     return (
@@ -356,7 +422,7 @@ export default function AxiomGameShellPage() {
               {/* Active Expression State Readout */}
               <div className="border-l border-slate-700 pl-4">
                 <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
-                  EYE STATE · {currentExprSpec.id}
+                  {isDa ? 'UDTRYK' : 'EYE STATE'} · {currentExprSpec.id}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span
@@ -374,7 +440,7 @@ export default function AxiomGameShellPage() {
               {/* Tabular-Nums Score & Accuracy */}
               <div className="border-l border-slate-700 pl-4 font-mono tabular-nums">
                 <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                  TRUTH SCORE · ACC 99.7%
+                  {isDa ? 'SANDHEDSSCORE · 99.7%' : 'TRUTH SCORE · ACC 99.7%'}
                 </div>
                 <div
                   data-testid="hud-score"
@@ -387,7 +453,7 @@ export default function AxiomGameShellPage() {
 
             {/* Top-Right Cluster: Chapter Objective & Utility Buttons */}
             <div className="flex flex-col items-end gap-2 pointer-events-auto">
-              <div className="flex items-center gap-2 bg-[rgba(10,12,24,0.88)] border border-slate-700 rounded-lg px-3 py-2 shadow-lg">
+              <div className="flex flex-wrap items-center gap-2 bg-[rgba(10,12,24,0.88)] border border-slate-700 rounded-lg px-3 py-2 shadow-lg">
                 {/* Chapter Selector */}
                 <label htmlFor="hud-chapter-select" className="sr-only">
                   Select Chapter
@@ -412,7 +478,7 @@ export default function AxiomGameShellPage() {
                   ))}
                 </select>
 
-                {/* Pulse Action Button (Accessible DOM trigger for Spacebar Pulse) */}
+                {/* Pulse Action Button */}
                 <button
                   type="button"
                   tabIndex={-1}
@@ -427,6 +493,23 @@ export default function AxiomGameShellPage() {
                   <span className="hidden sm:inline">Pulse [Space]</span>
                 </button>
 
+                {/* o-Llama Design Book [B] */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    setDesignBookOpen(true);
+                  }}
+                  aria-label="Open o-Llama Design Book [B]"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#162447] hover:bg-[#203364] text-[#FFD600] border border-[#FFD600]/50 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">
+                    {isDa ? 'o-Llama [B]' : 'Design Book [B]'}
+                  </span>
+                </button>
+
                 {/* Truth Analyzer Terminal [T] */}
                 <button
                   type="button"
@@ -436,13 +519,13 @@ export default function AxiomGameShellPage() {
                     setTerminalOpen(true);
                   }}
                   aria-label="Open Truth Analyzer Terminal [T]"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#162447] hover:bg-[#203364] text-[#00E5FF] border border-[#00E5FF]/50 text-xs font-semibold transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#162447] hover:bg-[#203364] text-[#00E5FF] border border-[#00E5FF]/50 text-xs font-semibold transition-colors cursor-pointer"
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
                   <span className="hidden md:inline">Verify [T]</span>
                 </button>
 
-                {/* Master Codex [C] */}
+                {/* Production Bible / Master Codex [C] */}
                 <button
                   type="button"
                   tabIndex={-1}
@@ -450,11 +533,25 @@ export default function AxiomGameShellPage() {
                     e.currentTarget.blur();
                     setCodexOpen(true);
                   }}
-                  aria-label="Open Master Codex [C]"
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#162447] hover:bg-[#203364] text-[#FFD600] border border-[#FFD600]/40 text-xs font-semibold transition-colors cursor-pointer"
+                  aria-label="Open Production Bible [C]"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#162447] hover:bg-[#203364] text-white border border-slate-600 text-xs font-semibold transition-colors cursor-pointer"
                 >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span className="hidden lg:inline">Codex [C]</span>
+                  <BookOpen className="w-3.5 h-3.5 text-[#00E5FF]" />
+                  <span className="hidden lg:inline">Bible [C]</span>
+                </button>
+
+                {/* Bilingual Toggle DA | EN */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    setLang((l) => (l === 'da' ? 'en' : 'da'));
+                  }}
+                  aria-label="Toggle Language DA/EN"
+                  className="px-2 py-1.5 rounded bg-[#162447] hover:bg-[#203364] text-xs font-mono font-bold text-[#00E5FF] border border-slate-700 cursor-pointer"
+                >
+                  {lang.toUpperCase()}
                 </button>
 
                 {/* Mute Toggle [M] */}
@@ -468,7 +565,11 @@ export default function AxiomGameShellPage() {
                   aria-label={muted ? 'Unmute Audio [M]' : 'Mute Audio [M]'}
                   className="p-1.5 rounded bg-[#162447] hover:bg-[#203364] text-slate-200 border border-slate-700 transition-colors cursor-pointer"
                 >
-                  {muted ? <VolumeX className="w-4 h-4 text-[#FF1744]" /> : <Volume2 className="w-4 h-4 text-[#00E5FF]" />}
+                  {muted ? (
+                    <VolumeX className="w-4 h-4 text-[#FF1744]" />
+                  ) : (
+                    <Volume2 className="w-4 h-4 text-[#00E5FF]" />
+                  )}
                 </button>
 
                 {/* Pause Toggle [P] */}
@@ -496,7 +597,7 @@ export default function AxiomGameShellPage() {
                 </span>
                 <span>·</span>
                 <span>
-                  ANOMALIES PURGED:{' '}
+                  {isDa ? 'ANOMALIER:' : 'ANOMALIES PURGED:'}{' '}
                   <strong className="text-[#00E5FF]">
                     {snapshot.purgesCount}/{snapshot.targetPurges}
                   </strong>
@@ -536,12 +637,16 @@ export default function AxiomGameShellPage() {
               {dockCollapsed ? (
                 <>
                   <ChevronUp className="w-3.5 h-3.5 text-[#00E5FF]" />
-                  <span>Show Chassis & Expression Dock [H]</span>
+                  <span>
+                    {isDa
+                      ? 'Vis Chassis & Udtryks-Dock [H]'
+                      : 'Show Chassis & Expression Dock [H]'}
+                  </span>
                 </>
               ) : (
                 <>
                   <ChevronDown className="w-3.5 h-3.5 text-[#00E5FF]" />
-                  <span>Hide Controls [H]</span>
+                  <span>{isDa ? 'Skjul Kontroller [H]' : 'Hide Controls [H]'}</span>
                 </>
               )}
             </button>
@@ -552,9 +657,9 @@ export default function AxiomGameShellPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   {(
                     [
-                      { id: 'tank', key: '1', label: 'Tank Chassis', sub: 'Wide Pulse' },
-                      { id: 'wizard', key: '2', label: 'Monitor Wizard', sub: 'Reflects Orbs' },
-                      { id: 'cosmic', key: '3', label: 'Cosmic Being', sub: 'Spiral Beam' },
+                      { id: 'tank', key: '1', label: 'o-Llama Tank', sub: 'Gul + & Gribere' },
+                      { id: 'wizard', key: '2', label: 'Monitor Wizard', sub: 'Forstørrelsesglas' },
+                      { id: 'cosmic', key: '3', label: 'Cosmic Being', sub: '7-Rings Spiral' },
                     ] as const
                   ).map((item) => {
                     const active = chassis === item.id;
@@ -640,14 +745,18 @@ export default function AxiomGameShellPage() {
               </div>
               <h2 className="text-2xl font-bold uppercase tracking-wider font-[family-name:var(--font-display)] mt-1">
                 {status === 'paused'
-                  ? 'Simulation Paused'
+                  ? isDa
+                    ? 'Simulation Sat På Pause'
+                    : 'Simulation Paused'
                   : status === 'victory'
                   ? '✅ Chapter Truth Verified'
                   : '⚠️ Integrity Depleted'}
               </h2>
               <p className="text-xs text-slate-300 mt-1">
                 {status === 'paused'
-                  ? 'AXIOM-7 is holding position on the PIXELVERSE-9 grid.'
+                  ? isDa
+                    ? 'o-Llama / AXIOM-7 afventer dit næste skridt.'
+                    : 'o-Llama / AXIOM-7 is holding position on the PIXELVERSE-9 grid.'
                   : status === 'victory'
                   ? 'All Truth Tomes cross-referenced and misinformation anomalies purged!'
                   : 'Misinformation overload detected. Reboot chassis to restore truth verification.'}
@@ -685,7 +794,7 @@ export default function AxiomGameShellPage() {
                   className="flex items-center gap-2 px-5 py-2.5 rounded font-bold text-xs uppercase tracking-wider bg-[#00E5FF] hover:bg-[#00B8D4] text-[#050510] cursor-pointer"
                 >
                   <Play className="w-4 h-4 fill-current" />
-                  <span>Resume</span>
+                  <span>{isDa ? 'Fortsæt' : 'Resume'}</span>
                 </button>
               )}
 
@@ -707,7 +816,6 @@ export default function AxiomGameShellPage() {
                 type="button"
                 data-start="true"
                 onClick={() => {
-                  // Force re-init of current chapter by toggling
                   setVerifiedCelebrationCount((c) => c + 1);
                   handleStartGame(chapterIndex);
                 }}
@@ -742,9 +850,20 @@ export default function AxiomGameShellPage() {
         onSetExpression={setExpression}
       />
 
-      {/* 6. Master Design Document Codex Modal */}
+      {/* 6. o-Llama - Axiom Interactive Design Book Modal */}
+      <OLlamaDesignBookModal
+        isOpen={designBookOpen}
+        lang={lang}
+        onClose={() => setDesignBookOpen(false)}
+        onApplyExpressionTo3D={(expr) => {
+          setExpression(expr);
+        }}
+      />
+
+      {/* 7. Production Bible v1.0 & Master Codex Modal */}
       <MasterCodexModal
         isOpen={codexOpen}
+        lang={lang}
         onClose={() => setCodexOpen(false)}
         onSelectChapter={(idx) => handleStartGame(idx)}
         onSelectChassis={handleSelectChassis}

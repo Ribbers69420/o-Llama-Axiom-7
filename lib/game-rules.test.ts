@@ -95,3 +95,22 @@ test('evaluateTruthClaimDeterministic verifies canonical truths and rejects fall
   assert.equal(resFalse.verdict, 'FALSE');
   assert.equal(resFalse.recommendedExpression, 'EX-05');
 });
+
+import {
+  NOMINAL_COLORS,
+  OLLAMA_ANIMATIONS,
+  OLLAMA_EXPRESSION_STUDIES,
+  PRODUCTION_BIBLE_SCENES,
+} from './ollama-bible-spec.ts';
+
+test('o-Llama Design Book and Production Bible v1.0 specs contain all 9 sprite rows, 8 expression studies, 8 nominal colors, and 1854-coda mirror', () => {
+  assert.equal(OLLAMA_ANIMATIONS.length, 9);
+  assert.equal(OLLAMA_EXPRESSION_STUDIES.length, 8);
+  assert.equal(NOMINAL_COLORS.length, 8);
+  assert.equal(PRODUCTION_BIBLE_SCENES.length, 8);
+  const coda = PRODUCTION_BIBLE_SCENES.find((s) => s.sceneId === '1854-coda');
+  assert.ok(coda);
+  assert.equal(coda.episodeNum, 7);
+  assert.equal(coda.chassis, 'A-Coda');
+});
+
