@@ -1,0 +1,6 @@
+{
+  "name": "AXIOM-7: Guardian of Truth",
+  "description": "Interactive 3D spatial action-adventure game set in PIXELVERSE-9 where AXIOM-7 purges misinformation across 6 canonical chapters using swappable Tank, Wizard, and Cosmic forms and a High-Thinking Truth Analyzer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
