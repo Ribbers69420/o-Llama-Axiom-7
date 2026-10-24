@@ -5,6 +5,8 @@ import AxiomThreeCanvas, { type ActiveGameplaySnapshot } from '@/components/Axio
 import TruthAnalyzerModal from '@/components/TruthAnalyzerModal';
 import MasterCodexModal from '@/components/MasterCodexModal';
 import OLlamaDesignBookModal from '@/components/OLlamaDesignBookModal';
+import RustSqlD3Modal from '@/components/RustSqlD3Modal';
+import PWAOfflineStatusBar from '@/components/PWAOfflineStatusBar';
 import {
   CHAPTER_SCENES,
   CHASSIS_SPECS,
@@ -16,11 +18,15 @@ import {
   type PillarName,
 } from '@/lib/game-rules';
 import type { AppLanguage } from '@/lib/ollama-bible-spec';
+import { insertTelemetryLogRow } from '@/lib/sql-truth-engine';
+import { saveDataToEccSlot } from '@/lib/ecc-storage-vault';
 import { soundSynth } from '@/lib/audio-synth';
 import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  Compass,
+  Cpu,
   Globe,
   Pause,
   Play,
@@ -44,12 +50,17 @@ export default function AxiomGameShellPage() {
   const [terminalOpen, setTerminalOpen] = useState<boolean>(false);
   const [codexOpen, setCodexOpen] = useState<boolean>(false);
   const [designBookOpen, setDesignBookOpen] = useState<boolean>(false);
+  const [rustSqlD3Open, setRustSqlD3Open] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(false);
 
   const [pulseTriggerCount, setPulseTriggerCount] = useState<number>(0);
+  const [sweepTriggerCount, setSweepTriggerCount] = useState<number>(0);
+  const [sessionResetCount, setSessionResetCount] = useState<number>(0);
   const [verifiedCelebrationCount, setVerifiedCelebrationCount] = useState<number>(0);
   const [verifiedClaimsTotal, setVerifiedClaimsTotal] = useState<number>(0);
   const [bestScore, setBestScore] = useState<number>(0);
+  const [clearedChapters, setClearedChapters] = useState<number[]>([]);
+  const [lastCheckpointCrc32, setLastCheckpointCrc32] = useState<string | null>(null);
 
   const [snapshot, setSnapshot] = useState<ActiveGameplaySnapshot>({
     hp: 5,
@@ -78,7 +89,7 @@ export default function AxiomGameShellPage() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('autostart') === '1') {
-        setStatus('playing');
+        queueMicrotask(() => setStatus('playing'));
       }
     }
   }, []);
@@ -90,6 +101,7 @@ export default function AxiomGameShellPage() {
       setChassis(cSpec.recommendedChassis);
       setExpression(cSpec.defaultExpression);
     }
+    setSessionResetCount((c) => c + 1);
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -111,13 +123,19 @@ export default function AxiomGameShellPage() {
     });
   }, []);
 
-  // Global keyboard shortcuts for Title Start, Chassis (1-3), Terminal (T), Design Book (B), Codex (C), Dock (H), Pause (Esc/P)
+  // Global keyboard shortcuts for Title Start, Chassis (1-3), Terminal (T/E), Design Book (B), Codex (C), Dock (H), Pause (Esc/P)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
-      if (status === 'title' && !terminalOpen && !codexOpen && !designBookOpen) {
+      if (
+        status === 'title' &&
+        !terminalOpen &&
+        !codexOpen &&
+        !designBookOpen &&
+        !rustSqlD3Open
+      ) {
         if (e.code === 'Enter' || e.code === 'Space') {
           e.preventDefault();
           handleStartGame();
@@ -128,7 +146,7 @@ export default function AxiomGameShellPage() {
       if (e.code === 'Digit1') handleSelectChassis('tank');
       else if (e.code === 'Digit2') handleSelectChassis('wizard');
       else if (e.code === 'Digit3') handleSelectChassis('cosmic');
-      else if (e.code === 'KeyT') {
+      else if (e.code === 'KeyT' || e.code === 'KeyE') {
         e.preventDefault();
         setTerminalOpen((prev) => !prev);
       } else if (e.code === 'KeyB') {
@@ -137,6 +155,9 @@ export default function AxiomGameShellPage() {
       } else if (e.code === 'KeyC') {
         e.preventDefault();
         setCodexOpen((prev) => !prev);
+      } else if (e.code === 'KeyR') {
+        e.preventDefault();
+        setRustSqlD3Open((prev) => !prev);
       } else if (e.code === 'KeyH') {
         e.preventDefault();
         setDockCollapsed((prev) => !prev);
@@ -156,6 +177,10 @@ export default function AxiomGameShellPage() {
           setCodexOpen(false);
           return;
         }
+        if (rustSqlD3Open) {
+          setRustSqlD3Open(false);
+          return;
+        }
         setStatus((prev) =>
           prev === 'playing' ? 'paused' : prev === 'paused' ? 'playing' : prev
         );
@@ -169,6 +194,7 @@ export default function AxiomGameShellPage() {
     terminalOpen,
     codexOpen,
     designBookOpen,
+    rustSqlD3Open,
     handleStartGame,
     handleSelectChassis,
     handleToggleMute,
@@ -184,7 +210,40 @@ export default function AxiomGameShellPage() {
 
   const handleChapterComplete = useCallback(() => {
     setStatus('victory');
-  }, []);
+    setClearedChapters((prev) => {
+      const next = prev.includes(chapterIndex) ? prev : [...prev, chapterIndex];
+      try {
+        const ch = CHAPTER_SCENES[chapterIndex] || CHAPTER_SCENES[0];
+        insertTelemetryLogRow({
+          chapter_id: ch.chapterLabel,
+          chassis,
+          expression_code: expression,
+          pulse_damage: CHASSIS_SPECS[chassis].pulseDamage,
+          wasm_confidence: 99,
+          fps_quantized_ms: 42,
+          mode: 'OFFLINE_WASM',
+        });
+        const slot = saveDataToEccSlot({
+          slotId: 'SLOT-02',
+          label: `Auto-Save · ${ch.chapterLabel} (${next.length}/${CHAPTER_SCENES.length} Cleared)`,
+          category: 'GAME_CHECKPOINT',
+          payload: JSON.stringify({
+            type: 'AXIOM_CAMPAIGN_CHECKPOINT',
+            chapterCleared: ch.chapterLabel,
+            chapterIndex,
+            clearedChapters: next,
+            chassis,
+            expression,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+        setLastCheckpointCrc32(slot.crc32Hex);
+      } catch {
+        // Ignore storage errors in restricted environments
+      }
+      return next;
+    });
+  }, [chapterIndex, chassis, expression]);
 
   const handleGameOver = useCallback(() => {
     setStatus('gameover');
@@ -198,10 +257,12 @@ export default function AxiomGameShellPage() {
         chapterIndex={chapterIndex}
         chassis={chassis}
         expression={expression}
-        terminalOpen={terminalOpen || designBookOpen}
+        terminalOpen={terminalOpen || designBookOpen || rustSqlD3Open}
         codexOpen={codexOpen}
         pulseTriggerCount={pulseTriggerCount}
         verifiedCelebrationCount={verifiedCelebrationCount}
+        sessionResetCount={sessionResetCount}
+        sweepTriggerCount={sweepTriggerCount}
         onUpdateSnapshot={handleUpdateSnapshot}
         onExpressionAutoChange={setExpression}
         onChapterComplete={handleChapterComplete}
@@ -218,30 +279,42 @@ export default function AxiomGameShellPage() {
           <div className="flex items-start justify-between gap-4">
             {/* Asymmetric Left Negative-Space Lockup */}
             <div className="max-w-lg bg-[rgba(10,10,18,0.88)] border-2 border-[#00E5FF] rounded-lg p-4 sm:p-7 shadow-2xl pointer-events-auto">
-              {/* Bespoke Inline SVG Title Emblem Lockup with Yellow Plus (+) Signature */}
+              {/* Bespoke Inline SVG Title Emblem Lockup matching o-Llama-Axiom-01..14 */}
               <svg
                 viewBox="0 0 510 92"
                 className="w-full max-w-[430px] h-auto mb-2.5"
                 role="img"
                 aria-label="o-Llama · AXIOM-7: The Token of Trust"
               >
+                {/* Top Red Sensor Dome */}
+                <rect x="29" y="1" width="24" height="6" rx="2" fill="#FF1744" stroke="#05070B" strokeWidth="1.5" />
+                <rect x="33" y="2" width="7" height="2" fill="#FFCDD2" />
+                {/* Left & Right Circular Ear Hubs */}
+                <rect x="1" y="20" width="6" height="16" rx="2" fill="#78909C" stroke="#05070B" strokeWidth="1.5" />
+                <rect x="75" y="20" width="6" height="16" rx="2" fill="#90A4AE" stroke="#05070B" strokeWidth="1.5" />
+                {/* Brushed Steel Rounded Bezel + Deep Pitch-Black Screen */}
                 <rect
-                  x="2"
+                  x="6"
                   y="6"
-                  width="76"
-                  height="56"
+                  width="70"
+                  height="46"
                   rx="8"
-                  fill="#0A0A0A"
-                  stroke="#00E5FF"
-                  strokeWidth="3"
+                  fill="#607D8B"
+                  stroke="#05070B"
+                  strokeWidth="2.5"
                 />
-                <circle cx="26" cy="34" r="10" fill="#00E5FF" />
-                <circle cx="54" cy="34" r="10" fill="#00E5FF" />
-                {/* Yellow Cross (+) Signature + Green LED + Red Indicator */}
-                <rect x="20" y="68" width="5" height="15" fill="#FFD600" />
-                <rect x="15" y="73" width="15" height="5" fill="#FFD600" />
-                <circle cx="44" cy="75" r="4.5" fill="#00C853" />
-                <circle cx="58" cy="75" r="4.5" fill="#FF1744" />
+                <rect x="11" y="11" width="60" height="36" rx="5" fill="#040609" />
+                <circle cx="29" cy="29" r="9" fill="#00F0FF" />
+                <circle cx="53" cy="29" r="9" fill="#00F0FF" />
+                {/* Torso Chest: Yellow Cross (+) with Slot Below & 3 Stacked LEDs (Green, Yellow, Red) */}
+                <rect x="16" y="54" width="50" height="34" rx="4" fill="#455A64" stroke="#05070B" strokeWidth="2" />
+                <rect x="26" y="58" width="5" height="15" fill="#FFD600" />
+                <rect x="21" y="63" width="15" height="5" fill="#FFD600" />
+                <rect x="23" y="77" width="11" height="3" fill="#05070B" />
+                <rect x="44" y="57" width="16" height="28" rx="2" fill="#1C262B" />
+                <circle cx="52" cy="63" r="4" fill="#00E676" />
+                <circle cx="52" cy="72" r="3" fill="#FFD600" />
+                <circle cx="52" cy="80" r="3.5" fill="#FF1744" />
                 <text
                   x="94"
                   y="45"
@@ -268,8 +341,8 @@ export default function AxiomGameShellPage() {
 
               <p className="text-xs sm:text-sm text-slate-200 leading-relaxed mb-4">
                 {isDa
-                  ? 'Lille robot. Større udtryk. Udforsk alle 6 kanoniske PIXELVERSE-9 kapitler i 3D, åbn den interaktive o-Llama Designbog (med 8×9 pixel-spritesheet og kropssprog fra 3. okt.) eller dyk ned i Production Bible v1.0.'
-                  : 'Small robot. Bigger expression. Explore all 6 canonical PIXELVERSE-9 chapters in 3D, open the interactive o-Llama Design Book (8×9 pixel spritesheet & Oct 3 postures), or inspect Production Bible v1.0.'}
+                  ? 'Lille robot. Større udtryk. Udforsk alle 6 kanoniske PIXELVERSE-9 kapitler i 3D med opdateret o-Llama model, åbn Designbogen med alle 14 o-Llama-Axiom positurer (01–14) og 8×9 spritesheet, eller dyk ned i Production Bible v1.0.'
+                  : 'Small robot. Bigger expression. Explore all 6 canonical PIXELVERSE-9 chapters in 3D with the updated o-Llama model, open the Design Book featuring all 14 o-Llama-Axiom poses (01–14) & 8×9 spritesheet, or inspect Production Bible v1.0.'}
               </p>
 
               {/* Primary Start CTA & Interactive Documentation Suites */}
@@ -300,6 +373,16 @@ export default function AxiomGameShellPage() {
                 >
                   <BookOpen className="w-3.5 h-3.5" />
                   <span>{isDa ? 'Production Bible [C]' : 'Production Bible [C]'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRustSqlD3Open(true)}
+                  data-testid="open-rust-sql-d3-btn"
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded font-semibold text-xs uppercase tracking-wider bg-[#10261E] hover:bg-[#17382C] text-[#00E676] border border-[#00E676]/60 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Cpu className="w-3.5 h-3.5" />
+                  <span>{isDa ? 'Rust · SQL · D3 [R]' : 'Rust · SQL · D3 [R]'}</span>
                 </button>
               </div>
 
@@ -336,8 +419,13 @@ export default function AxiomGameShellPage() {
               </div>
             </div>
 
-            {/* Top-Right Language Switcher (DA | EN) on Title Screen */}
-            <div className="pointer-events-auto flex items-center gap-2 bg-[rgba(10,10,18,0.88)] border border-slate-700 rounded-lg px-3 py-2">
+            {/* Top-Right Offline PWA Status + Language Switcher (DA | EN) on Title Screen */}
+            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2 bg-[rgba(10,10,18,0.88)] border border-slate-700 rounded-lg px-3 py-2">
+              <PWAOfflineStatusBar
+                lang={lang}
+                onOpenRustSqlD3={() => setRustSqlD3Open(true)}
+              />
+              <div className="h-4 w-px bg-slate-700" />
               <Globe className="w-4 h-4 text-[#00E5FF]" />
               <button
                 type="button"
@@ -369,8 +457,8 @@ export default function AxiomGameShellPage() {
           {/* Flat Bottom Control-Hint Line */}
           <div className="self-center mt-2 px-4 py-1.5 rounded bg-[rgba(10,10,18,0.88)] border border-slate-700/80 text-[11px] sm:text-xs font-mono text-slate-200 tracking-wide text-center">
             {isDa
-              ? 'WASD Flyt · Space Impuls · Shift Dash · 1-3 Chassis · B Designbog · C Bible · T Sandhedsterminal'
-              : 'WASD Move · Space Pulse Scan · Shift Dash · 1-3 Chassis · B Design Book · C Bible · T Truth Terminal'}
+              ? 'WASD Flyt · Space Impuls · Shift Dash · 1-3 Chassis · B Designbog · C Bible · R Rust/SQL/D3 · T Sandhedsterminal'
+              : 'WASD Move · Space Pulse Scan · Shift Dash · 1-3 Chassis · B Design Book · C Bible · R Rust/SQL/D3 · T Truth Terminal'}
           </div>
         </section>
       )}
@@ -482,6 +570,7 @@ export default function AxiomGameShellPage() {
                 <button
                   type="button"
                   tabIndex={-1}
+                  data-testid="hud-pulse-btn"
                   onClick={(e) => {
                     e.currentTarget.blur();
                     setPulseTriggerCount((c) => c + 1);
@@ -491,6 +580,27 @@ export default function AxiomGameShellPage() {
                 >
                   <Zap className="w-3.5 h-3.5 fill-current" />
                   <span className="hidden sm:inline">Pulse [Space]</span>
+                </button>
+
+                {/* Tactical Sector Sweep Button [Q] */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-sweep-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    setSweepTriggerCount((c) => c + 1);
+                  }}
+                  aria-label="Tactical Sector Sweep [Q]"
+                  title={
+                    isDa
+                      ? 'Dash til nærmeste Tome eller Anomali og udsend Sandhedsimpuls [Q]'
+                      : 'Dash to nearest Tome or Anomaly and emit Truth Pulse [Q]'
+                  }
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#00C853] hover:bg-[#00E676] text-[#050510] text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Sweep [Q]</span>
                 </button>
 
                 {/* o-Llama Design Book [B] */}
@@ -539,6 +649,26 @@ export default function AxiomGameShellPage() {
                   <BookOpen className="w-3.5 h-3.5 text-[#00E5FF]" />
                   <span className="hidden lg:inline">Bible [C]</span>
                 </button>
+
+                {/* Rust / SQL / D3 Offline Studio [R] */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    setRustSqlD3Open(true);
+                  }}
+                  aria-label="Open Rust SQL D3 Studio [R]"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#10261E] hover:bg-[#17382C] text-[#00E676] border border-[#00E676]/60 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Cpu className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">Rust·SQL·D3 [R]</span>
+                </button>
+
+                <PWAOfflineStatusBar
+                  lang={lang}
+                  onOpenRustSqlD3={() => setRustSqlD3Open(true)}
+                />
 
                 {/* Bilingual Toggle DA | EN */}
                 <button
@@ -749,7 +879,10 @@ export default function AxiomGameShellPage() {
                     ? 'Simulation Sat På Pause'
                     : 'Simulation Paused'
                   : status === 'victory'
-                  ? '✅ Chapter Truth Verified'
+                  ? chapterIndex === CHAPTER_SCENES.length - 1 ||
+                    clearedChapters.length >= CHAPTER_SCENES.length
+                    ? '🏆 Full Campaign Complete · 1854-Coda'
+                    : '✅ Chapter Truth Verified'
                   : '⚠️ Integrity Depleted'}
               </h2>
               <p className="text-xs text-slate-300 mt-1">
@@ -758,9 +891,25 @@ export default function AxiomGameShellPage() {
                     ? 'o-Llama / AXIOM-7 afventer dit næste skridt.'
                     : 'o-Llama / AXIOM-7 is holding position on the PIXELVERSE-9 grid.'
                   : status === 'victory'
-                  ? 'All Truth Tomes cross-referenced and misinformation anomalies purged!'
+                  ? chapterIndex === CHAPTER_SCENES.length - 1 ||
+                    clearedChapters.length >= CHAPTER_SCENES.length
+                    ? 'All 6 PIXELVERSE-9 Chapters verified across FACTS, EVIDENCE, DATA & REALITY! SQL telemetry & ECC Vault synchronized.'
+                    : 'All Truth Tomes cross-referenced and misinformation anomalies purged!'
                   : 'Misinformation overload detected. Reboot chassis to restore truth verification.'}
               </p>
+              {status === 'victory' && (
+                <div className="mt-2 inline-flex items-center gap-2 px-2.5 py-1 rounded bg-[#0A192F] border border-[#00E676]/50 text-[11px] font-mono text-[#00E676]">
+                  <span>
+                    CAMPAIGN: {clearedChapters.length}/{CHAPTER_SCENES.length} CHAPTERS
+                  </span>
+                  {lastCheckpointCrc32 && (
+                    <>
+                      <span>·</span>
+                      <span>ECC SAVED: {lastCheckpointCrc32}</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 3 Tabular-Nums Stat Tiles */}
@@ -799,17 +948,34 @@ export default function AxiomGameShellPage() {
               )}
 
               {status === 'victory' && (
-                <button
-                  type="button"
-                  data-start="true"
-                  onClick={() =>
-                    handleStartGame((chapterIndex + 1) % CHAPTER_SCENES.length)
-                  }
-                  className="flex items-center gap-2 px-5 py-2.5 rounded font-bold text-xs uppercase tracking-wider bg-[#00C853] hover:bg-[#00E676] text-[#050510] cursor-pointer"
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                  <span>Next Chapter</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    data-start="true"
+                    data-testid="victory-next-chapter-btn"
+                    onClick={() =>
+                      handleStartGame((chapterIndex + 1) % CHAPTER_SCENES.length)
+                    }
+                    className="flex items-center gap-2 px-5 py-2.5 rounded font-bold text-xs uppercase tracking-wider bg-[#00C853] hover:bg-[#00E676] text-[#050510] cursor-pointer"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>
+                      {chapterIndex === CHAPTER_SCENES.length - 1
+                        ? 'New Game+ (Chapter 1)'
+                        : 'Next Chapter'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="victory-open-telemetry-btn"
+                    onClick={() => setRustSqlD3Open(true)}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded font-semibold text-xs uppercase tracking-wider bg-[#10261E] hover:bg-[#17382C] text-[#00E676] border border-[#00E676]/60 cursor-pointer"
+                  >
+                    <Cpu className="w-3.5 h-3.5" />
+                    <span>Telemetry & ECC [R]</span>
+                  </button>
+                </>
               )}
 
               <button
@@ -868,6 +1034,15 @@ export default function AxiomGameShellPage() {
         onSelectChapter={(idx) => handleStartGame(idx)}
         onSelectChassis={handleSelectChassis}
         onSelectExpression={setExpression}
+      />
+
+      {/* 8. Offline Rust/WASM + SQL Relational DB + D3.js Telemetry Studio Modal */}
+      <RustSqlD3Modal
+        isOpen={rustSqlD3Open}
+        lang={lang}
+        activeChassis={chassis}
+        activeExpression={expression}
+        onClose={() => setRustSqlD3Open(false)}
       />
     </main>
   );

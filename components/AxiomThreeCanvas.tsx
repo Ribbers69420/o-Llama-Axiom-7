@@ -19,6 +19,7 @@ import {
   type GameStatus,
   type PillarName,
 } from '@/lib/game-rules';
+import { computeWasmPulseDamage } from '@/lib/rust-wasm-kernel';
 import { soundSynth } from '@/lib/audio-synth';
 
 export interface ActiveGameplaySnapshot {
@@ -42,6 +43,8 @@ interface AxiomThreeCanvasProps {
   codexOpen: boolean;
   pulseTriggerCount: number;
   verifiedCelebrationCount: number;
+  sessionResetCount?: number;
+  sweepTriggerCount?: number;
   onUpdateSnapshot: (snap: ActiveGameplaySnapshot) => void;
   onExpressionAutoChange: (expr: ExpressionId) => void;
   onChapterComplete: () => void;
@@ -94,6 +97,8 @@ export default function AxiomThreeCanvas({
   codexOpen,
   pulseTriggerCount,
   verifiedCelebrationCount,
+  sessionResetCount = 0,
+  sweepTriggerCount = 0,
   onUpdateSnapshot,
   onExpressionAutoChange,
   onChapterComplete,
@@ -110,6 +115,10 @@ export default function AxiomThreeCanvas({
     expression,
     terminalOpen,
     codexOpen,
+    pulseTriggerCount,
+    verifiedCelebrationCount,
+    sessionResetCount,
+    sweepTriggerCount,
     onUpdateSnapshot,
     onExpressionAutoChange,
     onChapterComplete,
@@ -125,6 +134,10 @@ export default function AxiomThreeCanvas({
       expression,
       terminalOpen,
       codexOpen,
+      pulseTriggerCount,
+      verifiedCelebrationCount,
+      sessionResetCount,
+      sweepTriggerCount,
       onUpdateSnapshot,
       onExpressionAutoChange,
       onChapterComplete,
@@ -138,6 +151,10 @@ export default function AxiomThreeCanvas({
     expression,
     terminalOpen,
     codexOpen,
+    pulseTriggerCount,
+    verifiedCelebrationCount,
+    sessionResetCount,
+    sweepTriggerCount,
     onUpdateSnapshot,
     onExpressionAutoChange,
     onChapterComplete,
@@ -148,16 +165,10 @@ export default function AxiomThreeCanvas({
   const externalCommandRef = useRef({
     lastPulseCount: pulseTriggerCount,
     lastCelebrationCount: verifiedCelebrationCount,
+    lastResetCount: sessionResetCount,
+    lastSweepCount: sweepTriggerCount,
     lastChapterIndex: -1,
   });
-
-  useEffect(() => {
-    externalCommandRef.current.lastPulseCount = pulseTriggerCount;
-  }, [pulseTriggerCount]);
-
-  useEffect(() => {
-    externalCommandRef.current.lastCelebrationCount = verifiedCelebrationCount;
-  }, [verifiedCelebrationCount]);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -170,18 +181,513 @@ export default function AxiomThreeCanvas({
     const width = container.clientWidth || window.innerWidth || 1280;
     const height = container.clientHeight || window.innerHeight || 720;
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: !isHeadless,
-      powerPreference: 'high-performance',
-      preserveDrawingBuffer: true,
-    });
+    // Pre-validate WebGL context on a dedicated canvas BEFORE calling THREE.WebGLRenderer
+    // so Three.js never throws "Error creating WebGL context" if the browser blocked WebGL.
+    const glCanvas = document.createElement('canvas');
+    let glContext: WebGLRenderingContext | WebGL2RenderingContext | null = null;
+    let isSoftwareGl = isHeadless;
+    try {
+      const attrs: WebGLContextAttributes = {
+        antialias: !isHeadless,
+        powerPreference: 'high-performance',
+        preserveDrawingBuffer: false,
+      };
+      glContext =
+        (glCanvas.getContext('webgl2', attrs) as WebGL2RenderingContext | null) ||
+        (glCanvas.getContext('webgl', attrs) as WebGLRenderingContext | null) ||
+        (glCanvas.getContext('webgl2') as WebGL2RenderingContext | null) ||
+        (glCanvas.getContext('webgl') as WebGLRenderingContext | null);
+
+      if (glContext) {
+        const dbgExt = glContext.getExtension('WEBGL_debug_renderer_info');
+        const rendererParam = dbgExt ? dbgExt.UNMASKED_RENDERER_WEBGL : glContext.RENDERER;
+        const gpuName = String(glContext.getParameter(rendererParam) || '');
+        if (/SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpuName)) {
+          isSoftwareGl = true;
+        }
+
+        // Sanitize ANGLE / Direct3D HLSL compiler warning X4122 (double-precision constant folding
+        // emitted when unrolling PMREMGenerator SphericalGaussianBlur & cubeUV reflection shaders)
+        const rawGetProgramInfoLog = glContext.getProgramInfoLog.bind(glContext);
+        glContext.getProgramInfoLog = (program: WebGLProgram): string | null => {
+          const info = rawGetProgramInfoLog(program);
+          if (!info || !info.includes('X4122')) return info;
+          return info
+            .split('\n')
+            .filter((line) => !line.includes('warning X4122'))
+            .join('\n')
+            .trim();
+        };
+      }
+    } catch {
+      glContext = null;
+    }
+
+    let renderer: THREE.WebGLRenderer | null = null;
+    if (glContext) {
+      try {
+        renderer = new THREE.WebGLRenderer({
+          canvas: glCanvas,
+          context: glContext,
+          antialias: !isSoftwareGl,
+          powerPreference: 'high-performance',
+        });
+        // Disable synchronous shader info-log checks in production/runtime to avoid
+        // GPU pipeline stalls and benign ANGLE HLSL warning X4122 console output.
+        renderer.debug.checkShaderErrors = false;
+      } catch {
+        renderer = null;
+      }
+    }
+
+    // =========================================================================
+    // INTERACTIVE 2D CANVAS SPATIAL FALLBACK ENGINE (when WebGL is blocked)
+    // =========================================================================
+    if (!renderer) {
+      const fallbackCanvas = document.createElement('canvas');
+      fallbackCanvas.width = width;
+      fallbackCanvas.height = height;
+      fallbackCanvas.className = 'w-full h-full block pixel-crisp';
+      container.innerHTML = '';
+      container.appendChild(fallbackCanvas);
+      const ctx2d = fallbackCanvas.getContext('2d');
+
+      const fbState = {
+        playerX: 0,
+        playerZ: 3.5,
+        playerRotY: -0.22,
+        hp: 5,
+        maxHp: 5,
+        score: 0,
+        tomesCollected: 0,
+        purgesCount: 0,
+        pillarsUnlocked: [] as PillarName[],
+        pulseWaveProgress: 0,
+        pulseCooldown: 0,
+        chapterCompleteFired: false,
+        lastChapterIdx: -1,
+        lastResetCount: externalCommandRef.current.lastResetCount,
+        lastPulseCount: externalCommandRef.current.lastPulseCount,
+        lastCelebCount: externalCommandRef.current.lastCelebrationCount,
+        lastSweepCount: externalCommandRef.current.lastSweepCount,
+        tomes: [] as { x: number; z: number; pillar: PillarName; color: string; collected: boolean }[],
+        enemies: [] as { x: number; z: number; hp: number; maxHp: number; alive: boolean }[],
+      };
+
+      const resetFallbackChapter = (idx: number) => {
+        const spec = CHAPTER_SCENES[idx] || CHAPTER_SCENES[0];
+        fbState.playerX = 0;
+        fbState.playerZ = 3.5;
+        fbState.hp = 5;
+        fbState.tomesCollected = 0;
+        fbState.purgesCount = 0;
+        fbState.pillarsUnlocked = [];
+        fbState.chapterCompleteFired = false;
+        fbState.tomes = Array.from({ length: spec.targetTomes }, (_, i) => {
+          const pillar = PILLAR_ORDER[i % 4];
+          const ang = (i / spec.targetTomes) * Math.PI * 2 + 0.4;
+          const rad = 5.5 + (i % 2) * 2.5;
+          return {
+            x: Math.cos(ang) * rad,
+            z: Math.sin(ang) * rad,
+            pillar,
+            color: PILLAR_COLORS[pillar],
+            collected: false,
+          };
+        });
+        fbState.enemies = Array.from({ length: spec.targetPurges }, (_, i) => {
+          const ang = (i / spec.targetPurges) * Math.PI * 2 + 0.9;
+          const rad = 6.0 + (i % 2) * 3.0;
+          return {
+            x: Math.cos(ang) * rad,
+            z: Math.sin(ang) * rad,
+            hp: 55,
+            maxHp: 55,
+            alive: true,
+          };
+        });
+        propsRef.current.onUpdateSnapshot({
+          hp: fbState.hp,
+          maxHp: fbState.maxHp,
+          score: fbState.score,
+          tomesCollected: 0,
+          targetTomes: spec.targetTomes,
+          purgesCount: 0,
+          targetPurges: spec.targetPurges,
+          pillarsUnlocked: [],
+          nearbyTomeClaimIndex: 0,
+        });
+      };
+
+      const executeFallbackPulse = () => {
+        fbState.pulseWaveProgress = 0.01;
+        fbState.pulseCooldown = 0.25;
+        soundSynth.playPulseScan(propsRef.current.chassis);
+        fbState.enemies.forEach((en) => {
+          if (!en.alive) return;
+          const d = Math.hypot(en.x - fbState.playerX, en.z - fbState.playerZ);
+          const dmg = computeWasmPulseDamage(
+            propsRef.current.chassis,
+            propsRef.current.expression,
+            d
+          );
+          if (dmg.hit) {
+            en.hp -= dmg.damage;
+            if (en.hp <= 0) {
+              en.alive = false;
+              fbState.purgesCount += 1;
+              fbState.score += 150;
+            }
+          }
+        });
+      };
+
+      const executeFallbackSweep = () => {
+        const nextTome = fbState.tomes.find((t) => !t.collected);
+        const nextEnemy = fbState.enemies.find((en) => en.alive);
+        if (nextTome) {
+          fbState.playerX = nextTome.x;
+          fbState.playerZ = nextTome.z;
+          nextTome.collected = true;
+          fbState.tomesCollected += 1;
+          fbState.score += 200;
+          if (!fbState.pillarsUnlocked.includes(nextTome.pillar)) {
+            fbState.pillarsUnlocked = [...fbState.pillarsUnlocked, nextTome.pillar];
+          }
+          soundSynth.playTomePickup();
+        } else if (nextEnemy) {
+          fbState.playerX = nextEnemy.x;
+          fbState.playerZ = nextEnemy.z;
+        }
+        executeFallbackPulse();
+      };
+
+      const keys = new Set<string>();
+      const onFbKeyDown = (e: KeyboardEvent) => {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        keys.add(e.code);
+        if (e.code === 'Space' && fbState.pulseCooldown <= 0) {
+          executeFallbackPulse();
+        } else if (e.code === 'KeyQ') {
+          executeFallbackSweep();
+        }
+      };
+      const onFbKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
+      const onFbResize = () => {
+        fallbackCanvas.width = container.clientWidth || window.innerWidth || 1280;
+        fallbackCanvas.height = container.clientHeight || window.innerHeight || 720;
+      };
+
+      window.addEventListener('keydown', onFbKeyDown);
+      window.addEventListener('keyup', onFbKeyUp);
+      window.addEventListener('resize', onFbResize);
+
+      let fbAnimId = 0;
+      let fbLast = performance.now();
+      let fbSyncAcc = 0;
+
+      const renderFallback = (now: number) => {
+        fbAnimId = requestAnimationFrame(renderFallback);
+        const dt = clampDeltaTime((now - fbLast) / 1000);
+        fbLast = now;
+        const p = propsRef.current;
+        const chSpec = CHAPTER_SCENES[p.chapterIndex] || CHAPTER_SCENES[0];
+
+        if (
+          fbState.lastChapterIdx !== p.chapterIndex ||
+          fbState.lastResetCount !== p.sessionResetCount
+        ) {
+          fbState.lastChapterIdx = p.chapterIndex;
+          fbState.lastResetCount = p.sessionResetCount;
+          resetFallbackChapter(p.chapterIndex);
+        }
+
+        if (p.pulseTriggerCount !== fbState.lastPulseCount) {
+          fbState.lastPulseCount = p.pulseTriggerCount;
+          executeFallbackPulse();
+        }
+
+        if (p.sweepTriggerCount !== fbState.lastSweepCount) {
+          fbState.lastSweepCount = p.sweepTriggerCount;
+          executeFallbackSweep();
+        }
+
+        if (p.verifiedCelebrationCount !== fbState.lastCelebCount) {
+          fbState.lastCelebCount = p.verifiedCelebrationCount;
+          fbState.score += 250;
+          fbState.hp = Math.min(fbState.maxHp, fbState.hp + 1);
+        }
+
+        if (p.status === 'playing' && !p.terminalOpen && !p.codexOpen) {
+          let mx = 0;
+          let mz = 0;
+          if (keys.has('KeyW') || keys.has('ArrowUp')) mz -= 1;
+          if (keys.has('KeyS') || keys.has('ArrowDown')) mz += 1;
+          if (keys.has('KeyA') || keys.has('ArrowLeft')) mx -= 1;
+          if (keys.has('KeyD') || keys.has('ArrowRight')) mx += 1;
+          const len = Math.hypot(mx, mz);
+          if (len > 0) {
+            fbState.playerX = Math.max(-14, Math.min(14, fbState.playerX + (mx / len) * 9 * dt));
+            fbState.playerZ = Math.max(-12, Math.min(10, fbState.playerZ + (mz / len) * 9 * dt));
+          }
+          if (fbState.pulseCooldown > 0) fbState.pulseCooldown = Math.max(0, fbState.pulseCooldown - dt);
+
+          fbState.tomes.forEach((t) => {
+            if (!t.collected && Math.hypot(t.x - fbState.playerX, t.z - fbState.playerZ) < 2.2) {
+              t.collected = true;
+              fbState.tomesCollected += 1;
+              fbState.score += 200;
+              if (!fbState.pillarsUnlocked.includes(t.pillar)) {
+                fbState.pillarsUnlocked = [...fbState.pillarsUnlocked, t.pillar];
+              }
+            }
+          });
+
+          if (
+            !fbState.chapterCompleteFired &&
+            checkChapterVictory({
+              tomesCollected: fbState.tomesCollected,
+              targetTomes: chSpec.targetTomes,
+              purgesCount: fbState.purgesCount,
+              targetPurges: chSpec.targetPurges,
+            })
+          ) {
+            fbState.chapterCompleteFired = true;
+            p.onUpdateSnapshot({
+              hp: fbState.hp,
+              maxHp: fbState.maxHp,
+              score: fbState.score,
+              tomesCollected: fbState.tomesCollected,
+              targetTomes: chSpec.targetTomes,
+              purgesCount: fbState.purgesCount,
+              targetPurges: chSpec.targetPurges,
+              pillarsUnlocked: fbState.pillarsUnlocked,
+              nearbyTomeClaimIndex: 0,
+            });
+            soundSynth.playTruthVerified(true);
+            p.onChapterComplete();
+          }
+
+          fbSyncAcc += dt;
+          if (fbSyncAcc >= 0.1) {
+            fbSyncAcc = 0;
+            p.onUpdateSnapshot({
+              hp: fbState.hp,
+              maxHp: fbState.maxHp,
+              score: fbState.score,
+              tomesCollected: fbState.tomesCollected,
+              targetTomes: chSpec.targetTomes,
+              purgesCount: fbState.purgesCount,
+              targetPurges: chSpec.targetPurges,
+              pillarsUnlocked: fbState.pillarsUnlocked,
+              nearbyTomeClaimIndex: 0,
+            });
+          }
+        }
+
+        if (!ctx2d) return;
+        const cw = fallbackCanvas.width;
+        const ch = fallbackCanvas.height;
+
+        // Sky & Horizon Gradient
+        const grad = ctx2d.createLinearGradient(0, 0, 0, ch);
+        grad.addColorStop(0, chSpec.skyColor);
+        grad.addColorStop(0.45, chSpec.fogColor);
+        grad.addColorStop(0.46, chSpec.floorColor);
+        grad.addColorStop(1, '#1A1412');
+        ctx2d.fillStyle = grad;
+        ctx2d.fillRect(0, 0, cw, ch);
+
+        // Perspective Grid Lines on Floor
+        const horizonY = ch * 0.45;
+        ctx2d.strokeStyle = 'rgba(0, 240, 255, 0.22)';
+        ctx2d.lineWidth = 1;
+        for (let i = -12; i <= 12; i++) {
+          ctx2d.beginPath();
+          ctx2d.moveTo(cw / 2 + i * 35, horizonY);
+          ctx2d.lineTo(cw / 2 + i * 160, ch);
+          ctx2d.stroke();
+        }
+        for (let r = 1; r <= 8; r++) {
+          const ry = horizonY + Math.pow(r / 8, 1.5) * (ch - horizonY);
+          ctx2d.beginPath();
+          ctx2d.moveTo(0, ry);
+          ctx2d.lineTo(cw, ry);
+          ctx2d.stroke();
+        }
+
+        // Project world (x, z) to 2D canvas screen coordinates
+        const project = (wx: number, wz: number) => {
+          const relX = wx - (p.status === 'title' ? -2.2 : fbState.playerX * 0.5);
+          const relZ = wz - (p.status === 'title' ? 0 : fbState.playerZ * 0.3);
+          const depth = Math.max(0.25, (relZ + 14) / 22);
+          return {
+            sx: cw / 2 + relX * 48 * depth,
+            sy: horizonY + depth * (ch - horizonY) * 0.82,
+            scale: Math.max(0.45, depth * 1.35),
+          };
+        };
+
+        // Draw Tomes & Enemies in Playing mode
+        if (p.status !== 'title') {
+          fbState.tomes.forEach((t) => {
+            if (t.collected) return;
+            const pt = project(t.x, t.z);
+            ctx2d.fillStyle = t.color;
+            ctx2d.strokeStyle = '#00F0FF';
+            ctx2d.lineWidth = 2;
+            ctx2d.fillRect(pt.sx - 18 * pt.scale, pt.sy - 12 * pt.scale, 36 * pt.scale, 24 * pt.scale);
+            ctx2d.strokeRect(pt.sx - 18 * pt.scale, pt.sy - 12 * pt.scale, 36 * pt.scale, 24 * pt.scale);
+          });
+
+          fbState.enemies.forEach((en) => {
+            if (!en.alive) return;
+            const pe = project(en.x, en.z);
+            ctx2d.fillStyle = '#1E1024';
+            ctx2d.strokeStyle = '#FF1744';
+            ctx2d.lineWidth = 2;
+            ctx2d.beginPath();
+            ctx2d.arc(pe.sx, pe.sy - 14 * pe.scale, 18 * pe.scale, 0, Math.PI * 2);
+            ctx2d.fill();
+            ctx2d.stroke();
+          });
+        }
+
+        // Draw Pulse Wave Ring if active
+        const heroPos =
+          p.status === 'title'
+            ? { sx: cw * 0.68, sy: ch * 0.64, scale: 2.35 }
+            : project(fbState.playerX, fbState.playerZ);
+
+        if (fbState.pulseWaveProgress > 0) {
+          fbState.pulseWaveProgress += dt * 3.2;
+          if (fbState.pulseWaveProgress >= 1) {
+            fbState.pulseWaveProgress = 0;
+          } else {
+            ctx2d.strokeStyle = `rgba(0, 240, 255, ${(1 - fbState.pulseWaveProgress).toFixed(2)})`;
+            ctx2d.lineWidth = 4;
+            ctx2d.beginPath();
+            ctx2d.ellipse(
+              heroPos.sx,
+              heroPos.sy + 20,
+              fbState.pulseWaveProgress * 220,
+              fbState.pulseWaveProgress * 95,
+              0,
+              0,
+              Math.PI * 2
+            );
+            ctx2d.stroke();
+          }
+        }
+
+        // Draw o-Llama AXIOM-7 Character Rig in 3/4 Metallic Pixel Style
+        const s = heroPos.scale;
+        const hx = heroPos.sx;
+        const hy = heroPos.sy + Math.sin(now * 0.004) * 4;
+
+        ctx2d.save();
+        ctx2d.translate(hx, hy);
+        ctx2d.scale(s, s);
+
+        // Ground shadow
+        ctx2d.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx2d.beginPath();
+        ctx2d.ellipse(0, 42, 46, 16, 0, 0, Math.PI * 2);
+        ctx2d.fill();
+
+        // Top Red Sensor Dome
+        ctx2d.fillStyle = '#FF1744';
+        ctx2d.strokeStyle = '#08080C';
+        ctx2d.lineWidth = 2.5;
+        ctx2d.fillRect(-16, -64, 32, 8);
+        ctx2d.strokeRect(-16, -64, 32, 8);
+
+        // Left & Right Circular Ear Hubs
+        ctx2d.fillStyle = '#78909C';
+        ctx2d.fillRect(-48, -42, 8, 22);
+        ctx2d.strokeRect(-48, -42, 8, 22);
+        ctx2d.fillRect(40, -42, 8, 22);
+        ctx2d.strokeRect(40, -42, 8, 22);
+
+        // Head Brushed Steel Bezel + Black Screen
+        ctx2d.fillStyle = '#607D8B';
+        ctx2d.fillRect(-40, -56, 80, 48);
+        ctx2d.strokeRect(-40, -56, 80, 48);
+        ctx2d.fillStyle = '#05070A';
+        ctx2d.fillRect(-33, -49, 66, 34);
+
+        // Cyan Eyes based on active expression
+        ctx2d.fillStyle = p.expression === 'EX-05' ? '#FF1744' : '#00F0FF';
+        ctx2d.fillRect(-22, -39, 16, 14);
+        ctx2d.fillRect(6, -39, 16, 14);
+        if (p.expression === 'EX-02' || p.expression === 'EX-05') {
+          ctx2d.fillStyle = '#05070A';
+          ctx2d.fillRect(-18, -35, 8, 6);
+          ctx2d.fillRect(10, -35, 8, 6);
+        }
+
+        // Torso + Yellow Cross (+) + 3 Vertical LEDs (Green, Yellow, Red)
+        ctx2d.fillStyle = '#455A64';
+        ctx2d.fillRect(-28, -6, 56, 32);
+        ctx2d.strokeRect(-28, -6, 56, 32);
+
+        // Yellow Cross (+)
+        ctx2d.fillStyle = '#FFD600';
+        ctx2d.fillRect(-15, -1, 6, 16);
+        ctx2d.fillRect(-20, 4, 16, 6);
+        // Dark slot below yellow cross
+        ctx2d.fillStyle = '#08080C';
+        ctx2d.fillRect(-19, 18, 14, 3);
+
+        // 3 Stacked LEDs (Green, Yellow, Red)
+        ctx2d.fillStyle = '#1C262B';
+        ctx2d.fillRect(6, -2, 14, 24);
+        ctx2d.fillStyle = '#00E676';
+        ctx2d.fillRect(10, 0, 6, 5);
+        ctx2d.fillStyle = '#FFD600';
+        ctx2d.fillRect(10, 8, 6, 5);
+        ctx2d.fillStyle = '#FF1744';
+        ctx2d.fillRect(10, 16, 6, 5);
+
+        // Left & Right C-Claw Grippers
+        ctx2d.fillStyle = '#90A4AE';
+        ctx2d.fillRect(-40, -2, 10, 22);
+        ctx2d.strokeRect(-40, -2, 10, 22);
+        ctx2d.fillRect(30, -2, 10, 22);
+        ctx2d.strokeRect(30, -2, 10, 22);
+
+        // Ribbed Tank Treads
+        ctx2d.fillStyle = '#546E7A';
+        ctx2d.fillRect(-34, 24, 24, 18);
+        ctx2d.strokeRect(-34, 24, 24, 18);
+        ctx2d.fillRect(10, 24, 24, 18);
+        ctx2d.strokeRect(10, 24, 24, 18);
+
+        ctx2d.restore();
+      };
+
+      fbAnimId = requestAnimationFrame(renderFallback);
+      return () => {
+        cancelAnimationFrame(fbAnimId);
+        window.removeEventListener('keydown', onFbKeyDown);
+        window.removeEventListener('keyup', onFbKeyUp);
+        window.removeEventListener('resize', onFbResize);
+      };
+    }
+
+    const onWebGLContextLost = (e: Event) => {
+      e.preventDefault();
+    };
+    renderer.domElement.addEventListener('webglcontextlost', onWebGLContextLost, false);
+
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.12;
-    renderer.setPixelRatio(isHeadless ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
-    renderer.shadowMap.enabled = !isHeadless;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = !isSoftwareGl;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
@@ -206,16 +712,18 @@ export default function AxiomThreeCanvas({
 
     const keyLight = new THREE.DirectionalLight('#FFB070', 2.2);
     keyLight.position.set(14, 24, 16);
-    keyLight.castShadow = !isHeadless;
-    if (!isHeadless) {
-      keyLight.shadow.mapSize.set(1024, 1024);
-      keyLight.shadow.camera.near = 2;
-      keyLight.shadow.camera.far = 65;
-      const d = 22;
+    keyLight.castShadow = !isSoftwareGl;
+    if (!isSoftwareGl) {
+      // 512x512 hardware-accelerated PCFShadowMap with tight frustum (4x faster than 1024x1024 soft shadows)
+      keyLight.shadow.mapSize.set(512, 512);
+      keyLight.shadow.camera.near = 4;
+      keyLight.shadow.camera.far = 52;
+      const d = 16;
       keyLight.shadow.camera.left = -d;
       keyLight.shadow.camera.right = d;
       keyLight.shadow.camera.top = d;
       keyLight.shadow.camera.bottom = -d;
+      keyLight.shadow.radius = 1.5;
       keyLight.shadow.bias = -0.0005;
       keyLight.shadow.normalBias = 0.02;
     }
@@ -228,23 +736,51 @@ export default function AxiomThreeCanvas({
     // Procedural Textures (Zero external 404s)
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-    // 1. Checkerboard Chassis Texture (#2D2D2D / #222222)
+    // 1. Brushed Metallic Pixel-Bevel Chassis Texture (matching o-Llama-Axiom-01..14)
     const checkerCanvas = document.createElement('canvas');
     checkerCanvas.width = 128;
     checkerCanvas.height = 128;
     const cCtx = checkerCanvas.getContext('2d')!;
-    for (let y = 0; y < 8; y++) {
-      for (let x = 0; x < 8; x++) {
-        cCtx.fillStyle = (x + y) % 2 === 0 ? '#2D2D2D' : '#222222';
-        cCtx.fillRect(x * 16, y * 16, 16, 16);
-      }
+    cCtx.fillStyle = '#05070B';
+    cCtx.fillRect(0, 0, 128, 128);
+    cCtx.fillStyle = '#455A64';
+    cCtx.fillRect(4, 4, 120, 120);
+    // Top & left metallic highlight bevel
+    cCtx.fillStyle = '#B0BEC5';
+    cCtx.fillRect(4, 4, 120, 10);
+    cCtx.fillStyle = '#78909C';
+    cCtx.fillRect(4, 14, 10, 110);
+    // Subtle pixel steel grain
+    cCtx.fillStyle = '#546E7A';
+    for (let y = 20; y < 110; y += 16) {
+      cCtx.fillRect(16, y, 96, 6);
     }
     const checkerTex = new THREE.CanvasTexture(checkerCanvas);
     checkerTex.colorSpace = THREE.SRGBColorSpace;
-    checkerTex.wrapS = THREE.RepeatWrapping;
-    checkerTex.wrapT = THREE.RepeatWrapping;
     checkerTex.magFilter = THREE.NearestFilter;
     checkerTex.anisotropy = maxAnisotropy;
+
+    // 1b. Ribbed Metallic Caterpillar Tread Texture
+    const treadCanvas = document.createElement('canvas');
+    treadCanvas.width = 128;
+    treadCanvas.height = 128;
+    const tCtx = treadCanvas.getContext('2d')!;
+    tCtx.fillStyle = '#10161C';
+    tCtx.fillRect(0, 0, 128, 128);
+    for (let y = 0; y < 128; y += 16) {
+      tCtx.fillStyle = '#455A64';
+      tCtx.fillRect(4, y + 2, 120, 11);
+      tCtx.fillStyle = '#90A4AE';
+      tCtx.fillRect(8, y + 3, 112, 5);
+      tCtx.fillStyle = '#ECEFF1';
+      tCtx.fillRect(88, y + 3, 28, 5);
+    }
+    const treadTex = new THREE.CanvasTexture(treadCanvas);
+    treadTex.colorSpace = THREE.SRGBColorSpace;
+    treadTex.wrapS = THREE.RepeatWrapping;
+    treadTex.wrapT = THREE.RepeatWrapping;
+    treadTex.magFilter = THREE.NearestFilter;
+    treadTex.anisotropy = maxAnisotropy;
 
     // 2. Floor Grid / Wood Grain / Stone Procedural Texture
     const floorCanvas = document.createElement('canvas');
@@ -287,14 +823,23 @@ export default function AxiomThreeCanvas({
       floorTex.needsUpdate = true;
     }
 
-    // 3. Dynamic AXIOM-7 Face Screen CanvasTexture (Part 3.1 & 3.2 Expressions & Animations)
+    // 3. Dynamic o-Llama / AXIOM-7 Pixel Face Screen CanvasTexture (matching uploaded 14 poses)
     const faceCanvas = document.createElement('canvas');
     faceCanvas.width = 256;
     faceCanvas.height = 192;
     const faceCtx = faceCanvas.getContext('2d')!;
+    faceCtx.imageSmoothingEnabled = false;
     const faceTex = new THREE.CanvasTexture(faceCanvas);
     faceTex.colorSpace = THREE.SRGBColorSpace;
+    faceTex.magFilter = THREE.NearestFilter;
+    faceTex.minFilter = THREE.NearestFilter;
     faceTex.anisotropy = maxAnisotropy;
+
+    // Helper for pixelated blocks on screen canvas
+    function drawPixelRect(x: number, y: number, w: number, h: number, color: string) {
+      faceCtx.fillStyle = color;
+      faceCtx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+    }
 
     function drawAxiomScreen(
       exprId: ExpressionId,
@@ -302,28 +847,13 @@ export default function AxiomThreeCanvas({
       elapsed: number,
       celebrationTimer: number
     ) {
-      // Screen Black #0A0A0A
-      faceCtx.fillStyle = '#0A0A0A';
+      // Deep Pitch-Black Screen #040609
+      faceCtx.fillStyle = '#040609';
       faceCtx.fillRect(0, 0, 256, 192);
 
-      // Subtle scanlines
-      faceCtx.fillStyle = 'rgba(0, 229, 255, 0.03)';
-      for (let y = 0; y < 192; y += 6) {
-        faceCtx.fillRect(0, y, 256, 2);
-      }
-
-      // Top-right screen glare
-      faceCtx.fillStyle = 'rgba(255, 255, 255, 0.07)';
-      faceCtx.beginPath();
-      faceCtx.moveTo(190, 12);
-      faceCtx.lineTo(240, 12);
-      faceCtx.lineTo(240, 48);
-      faceCtx.closePath();
-      faceCtx.fill();
-
-      // Truth Confirmed green screen edge flash (Part 3.2)
+      // Truth Confirmed green screen edge flash
       if (celebrationTimer > 0) {
-        faceCtx.strokeStyle = '#00C853';
+        faceCtx.strokeStyle = '#00E676';
         faceCtx.lineWidth = 10;
         faceCtx.strokeRect(5, 5, 246, 182);
       }
@@ -335,26 +865,24 @@ export default function AxiomThreeCanvas({
           ? 'EX-04'
           : exprId;
 
-      const spec = EXPRESSIONS[activeExpr] || EXPRESSIONS['EX-01'];
+      // Blinking cycle every 3.8s (10 · Blink)
+      const blinkCycle = elapsed % 3.8;
+      const isBlinking = blinkCycle > 3.62 && activeExpr !== 'EX-04' && activeExpr !== 'EX-08';
 
-      // Blinking cycle every 3.5s (Part 3.2 IDLE 8fps)
-      const blinkCycle = elapsed % 3.5;
-      const isBlinking = blinkCycle > 3.32 && activeExpr !== 'EX-04' && activeExpr !== 'EX-08';
-
-      const leftX = 86;
-      const rightX = 170;
+      const leftX = 76;
+      const rightX = 180;
       const centerY = 96;
 
       if (activeExpr === 'EX-04') {
-        // Cosmic Spiral Eye (Part 4.4: 7 concentric rotating rainbow rings)
+        // Cosmic Spiral Eye (7 concentric rotating rainbow rings)
         const ringColors = [
-          '#8B00FF', // 1. Outer Violet
-          '#0000FF', // 2. Blue
-          '#00FF00', // 3. Green
-          '#FFFF00', // 4. Yellow
-          '#FF8C00', // 5. Orange
-          '#FF0000', // 6. Inner Red
-          '#FFD700', // 7. Core Gold
+          '#8B00FF',
+          '#0000FF',
+          '#00FF00',
+          '#FFFF00',
+          '#FF8C00',
+          '#FF0000',
+          '#FFD700',
         ];
         faceCtx.save();
         faceCtx.translate(128, 96);
@@ -367,102 +895,86 @@ export default function AxiomThreeCanvas({
           faceCtx.arc(0, 0, Math.max(6, radius), startAng, startAng + Math.PI * 1.65);
           faceCtx.stroke();
         });
-        // Core Gold CrosshairDot
         faceCtx.fillStyle = '#FFD700';
         faceCtx.beginPath();
         faceCtx.arc(0, 0, 7, 0, Math.PI * 2);
         faceCtx.fill();
         faceCtx.restore();
-      } else if (isBlinking || activeExpr === 'EX-08') {
-        // Closed / Sleeping --
-        faceCtx.strokeStyle = activeExpr === 'EX-08' ? '#3B4268' : spec.color;
-        faceCtx.lineWidth = 10;
-        faceCtx.lineCap = 'round';
+      } else if (isBlinking) {
+        // 10 · Blink: Thin horizontal cyan pixel line — —
         [leftX, rightX].forEach((cx) => {
-          faceCtx.beginPath();
-          faceCtx.moveTo(cx - 24, centerY);
-          faceCtx.lineTo(cx + 24, centerY);
-          faceCtx.stroke();
+          drawPixelRect(cx - 32, centerY - 5, 64, 10, '#00F0FF');
+        });
+      } else if (activeExpr === 'EX-08') {
+        // 11 · Stille · vågen: Thicker rounded horizontal cyan pixel bars ▬ ▬
+        [leftX, rightX].forEach((cx) => {
+          drawPixelRect(cx - 28, centerY - 12, 56, 24, '#00F0FF');
+          drawPixelRect(cx - 34, centerY - 8, 68, 16, '#00F0FF');
         });
       } else if (activeExpr === 'EX-01') {
-        // CURIOUS: Filled Circles ●● (#00E5FF with #00BCD4 glow)
+        // 01 · Nysgerrig: Stepped Pixelated Cyan Circles ●● (#00F0FF)
         [leftX, rightX].forEach((cx) => {
-          faceCtx.fillStyle = 'rgba(0, 188, 212, 0.35)';
-          faceCtx.beginPath();
-          faceCtx.arc(cx, centerY, 34, 0, Math.PI * 2);
-          faceCtx.fill();
-
-          faceCtx.fillStyle = '#00E5FF';
-          faceCtx.beginPath();
-          faceCtx.arc(cx, centerY, 26, 0, Math.PI * 2);
-          faceCtx.fill();
+          drawPixelRect(cx - 16, centerY - 32, 32, 8, '#00F0FF');
+          drawPixelRect(cx - 24, centerY - 24, 48, 8, '#00F0FF');
+          drawPixelRect(cx - 32, centerY - 16, 64, 32, '#00F0FF');
+          drawPixelRect(cx - 24, centerY + 16, 48, 8, '#00F0FF');
+          drawPixelRect(cx - 16, centerY + 24, 32, 8, '#00F0FF');
         });
       } else if (activeExpr === 'EX-02') {
-        // FOCUSED: Hollow Rings ○○ (outer 52px, inner 28px)
-        const pulse = 1 + Math.sin(elapsed * 5) * 0.05;
+        // 02 · Afventer / 03 · Gennemgår / 13 · Undersøger: Stepped Hollow Pixel Rings ○○
         [leftX, rightX].forEach((cx) => {
-          faceCtx.strokeStyle = '#00E5FF';
-          faceCtx.lineWidth = 11 * pulse;
-          faceCtx.beginPath();
-          faceCtx.arc(cx, centerY, 24, 0, Math.PI * 2);
-          faceCtx.stroke();
+          drawPixelRect(cx - 16, centerY - 32, 32, 8, '#00F0FF');
+          drawPixelRect(cx - 24, centerY - 24, 48, 8, '#00F0FF');
+          drawPixelRect(cx - 32, centerY - 16, 64, 32, '#00F0FF');
+          drawPixelRect(cx - 24, centerY + 16, 48, 8, '#00F0FF');
+          drawPixelRect(cx - 16, centerY + 24, 32, 8, '#00F0FF');
+          // Inner pitch-black hollow cutout
+          drawPixelRect(cx - 16, centerY - 16, 32, 32, '#040609');
+          drawPixelRect(cx - 8, centerY - 24, 16, 48, '#040609');
+          drawPixelRect(cx - 24, centerY - 8, 48, 16, '#040609');
         });
       } else if (activeExpr === 'EX-03') {
-        // WISE: Glowing Gold Orbs 🌕🌕 (#FFB300 + smile)
+        // WISE: Glowing Gold Pixel Orbs 🌕🌕 (#FFB300 + smile)
         [leftX, rightX].forEach((cx) => {
-          faceCtx.fillStyle = 'rgba(255, 143, 0, 0.4)';
-          faceCtx.beginPath();
-          faceCtx.arc(cx, centerY - 6, 33, 0, Math.PI * 2);
-          faceCtx.fill();
-
-          faceCtx.fillStyle = '#FFB300';
-          faceCtx.beginPath();
-          faceCtx.arc(cx, centerY - 6, 24, 0, Math.PI * 2);
-          faceCtx.fill();
+          drawPixelRect(cx - 16, centerY - 34, 32, 8, '#FFB300');
+          drawPixelRect(cx - 24, centerY - 26, 48, 40, '#FFB300');
+          drawPixelRect(cx - 16, centerY + 14, 32, 8, '#FFB300');
         });
-        // Wise curved smile (Part 4.3: 40x12 #FFB300)
-        faceCtx.strokeStyle = '#FFB300';
-        faceCtx.lineWidth = 6;
-        faceCtx.beginPath();
-        faceCtx.arc(128, centerY + 24, 22, 0.15 * Math.PI, 0.85 * Math.PI);
-        faceCtx.stroke();
+        drawPixelRect(108, centerY + 34, 40, 8, '#FFB300');
+        drawPixelRect(100, centerY + 26, 8, 8, '#FFB300');
+        drawPixelRect(148, centerY + 26, 8, 8, '#FFB300');
       } else if (activeExpr === 'EX-05') {
-        // ALERT: Target Rings ◉◉ (#FF1744)
+        // 06 · Blokeret: Red Pixel Target Rings with solid square center dot ◉◉ (#FF1744)
         [leftX, rightX].forEach((cx) => {
-          faceCtx.strokeStyle = '#FF1744';
-          faceCtx.lineWidth = 8;
-          faceCtx.beginPath();
-          faceCtx.arc(cx, centerY, 26, 0, Math.PI * 2);
-          faceCtx.stroke();
-
-          faceCtx.fillStyle = '#FF1744';
-          faceCtx.beginPath();
-          faceCtx.arc(cx, centerY, 10, 0, Math.PI * 2);
-          faceCtx.fill();
+          drawPixelRect(cx - 16, centerY - 32, 32, 8, '#FF1744');
+          drawPixelRect(cx - 24, centerY - 24, 48, 8, '#FF1744');
+          drawPixelRect(cx - 32, centerY - 16, 64, 32, '#FF1744');
+          drawPixelRect(cx - 24, centerY + 16, 48, 8, '#FF1744');
+          drawPixelRect(cx - 16, centerY + 24, 32, 8, '#FF1744');
+          // Black ring cutout
+          drawPixelRect(cx - 16, centerY - 16, 32, 32, '#040609');
+          drawPixelRect(cx - 8, centerY - 24, 16, 48, '#040609');
+          drawPixelRect(cx - 24, centerY - 8, 48, 16, '#040609');
+          // Solid 14x14 Red Target Center Square
+          drawPixelRect(cx - 7, centerY - 7, 14, 14, '#FF1744');
         });
       } else if (activeExpr === 'EX-06') {
-        // HAPPY: ^^ Truth Confirmed
-        faceCtx.strokeStyle = '#00E5FF';
-        faceCtx.lineWidth = 10;
-        faceCtx.lineCap = 'round';
-        faceCtx.lineJoin = 'round';
+        // 05 · Lille glæde / 14 · Afdæmpet glæde: Pixelated Cyan Arches ^^
         [leftX, rightX].forEach((cx) => {
-          faceCtx.beginPath();
-          faceCtx.moveTo(cx - 22, centerY + 10);
-          faceCtx.lineTo(cx, centerY - 16);
-          faceCtx.lineTo(cx + 22, centerY + 10);
-          faceCtx.stroke();
+          drawPixelRect(cx - 16, centerY - 20, 32, 12, '#00F0FF');
+          drawPixelRect(cx - 24, centerY - 12, 12, 14, '#00F0FF');
+          drawPixelRect(cx + 12, centerY - 12, 12, 14, '#00F0FF');
+          drawPixelRect(cx - 32, centerY, 12, 18, '#00F0FF');
+          drawPixelRect(cx + 20, centerY, 12, 18, '#00F0FF');
         });
       } else if (activeExpr === 'EX-07') {
-        // PROCESSING: ░░ Pixel grid + dot trail
-        faceCtx.fillStyle = '#00BCD4';
+        // 04 · Arbejder: Two 3x3 Cyan Pixel Block Matrices (### ###)
         [leftX, rightX].forEach((cx) => {
-          for (let py = -18; py <= 18; py += 12) {
-            for (let px = -18; px <= 18; px += 12) {
-              const on = Math.sin(elapsed * 8 + px + py) > -0.2;
-              if (on) {
-                faceCtx.fillRect(cx + px - 4, centerY + py - 4, 8, 8);
-              }
+          for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+              const bx = cx - 30 + c * 22;
+              const by = centerY - 28 + r * 20;
+              drawPixelRect(bx, by, 16, 14, '#00F0FF');
             }
           }
         });
@@ -472,13 +984,13 @@ export default function AxiomThreeCanvas({
     }
 
     // ============================================================================
-    // BUILD AXIOM-7 COMPOSITE 12-PART PROCEDURAL 3D RIG (Part 2.3 & Part 4)
+    // BUILD UPGRADED o-Llama · AXIOM-7 3D RIG (Matching the 16 Uploaded Images)
     // ============================================================================
     const axiomRoot = new THREE.Group();
     scene.add(axiomRoot);
 
-    // Contact shadow disc beneath AXIOM-7 (y = 0.02)
-    const contactShadowGeo = new THREE.CircleGeometry(1.45, 32);
+    // Contact shadow disc beneath o-Llama (y = 0.02)
+    const contactShadowGeo = new THREE.CircleGeometry(1.5, 32);
     contactShadowGeo.rotateX(-Math.PI / 2);
     const contactShadowMat = new THREE.MeshBasicMaterial({
       color: 0x000000,
@@ -493,184 +1005,320 @@ export default function AxiomThreeCanvas({
     const axiomBodyPivot = new THREE.Group();
     axiomRoot.add(axiomBodyPivot);
 
-    // Materials with varied roughness/metalness (>= 0.25 difference across adjacent parts)
-    const chassisDarkMat = new THREE.MeshStandardMaterial({
+    // Brushed Steel & Slate Materials matching o-Llama-Axiom-01..14
+    const chassisSteelMat = new THREE.MeshStandardMaterial({
       map: checkerTex,
       color: 0xffffff,
-      roughness: 0.72,
-      metalness: 0.25,
+      roughness: 0.45,
+      metalness: 0.55,
     });
-    const bezelMat = new THREE.MeshStandardMaterial({
-      color: '#2D2D2D',
+    const bezelSteelMat = new THREE.MeshStandardMaterial({
+      color: '#607D8B',
       roughness: 0.35,
       metalness: 0.65,
     });
+    const silverHighlightMat = new THREE.MeshStandardMaterial({
+      color: '#B0BEC5',
+      roughness: 0.25,
+      metalness: 0.78,
+    });
     const frameDarkMat = new THREE.MeshStandardMaterial({
-      color: '#1A1A1A',
-      roughness: 0.45,
+      color: '#1C262B',
+      roughness: 0.5,
       metalness: 0.4,
+    });
+    const outlineBlackMat = new THREE.MeshBasicMaterial({
+      color: '#05070B',
+    });
+    const treadPlateMat = new THREE.MeshStandardMaterial({
+      map: treadTex,
+      color: 0xffffff,
+      roughness: 0.4,
+      metalness: 0.6,
     });
     const screenFaceMat = new THREE.MeshStandardMaterial({
       map: faceTex,
       emissive: '#ffffff',
       emissiveMap: faceTex,
-      emissiveIntensity: 0.92,
-      roughness: 0.12,
-      metalness: 0.1,
+      emissiveIntensity: 0.96,
+      roughness: 0.1,
+      metalness: 0.08,
     });
     const yellowBtnMat = new THREE.MeshStandardMaterial({
       color: '#FFD600',
       emissive: '#FFD600',
-      emissiveIntensity: 0.35,
+      emissiveIntensity: 0.4,
       roughness: 0.25,
       metalness: 0.2,
     });
     const redBtnMat = new THREE.MeshStandardMaterial({
       color: '#FF1744',
       emissive: '#FF1744',
-      emissiveIntensity: 0.35,
-      roughness: 0.25,
+      emissiveIntensity: 0.45,
+      roughness: 0.22,
       metalness: 0.2,
     });
     const greenLedMat = new THREE.MeshStandardMaterial({
-      color: '#00C853',
-      emissive: '#00C853',
-      emissiveIntensity: 0.85,
+      color: '#00E676',
+      emissive: '#00E676',
+      emissiveIntensity: 0.9,
       roughness: 0.15,
       metalness: 0.1,
     });
 
-    // Part 1: Main Body Chassis (3 units tall x 5 units wide -> 1.5 x 0.95 x 1.1)
-    const mainChassisGeo = new THREE.BoxGeometry(1.5, 0.95, 1.1);
-    const mainChassisMesh = new THREE.Mesh(mainChassisGeo, chassisDarkMat);
-    mainChassisMesh.position.set(0, 0.82, 0);
+    // Part 1: Main Torso Box (1.48 x 0.96 x 1.08) + Top Silver Bevel
+    const mainChassisGeo = new THREE.BoxGeometry(1.48, 0.96, 1.08);
+    const mainChassisMesh = new THREE.Mesh(mainChassisGeo, chassisSteelMat);
+    mainChassisMesh.position.set(0, 0.88, 0);
     mainChassisMesh.castShadow = !isHeadless;
     mainChassisMesh.receiveShadow = !isHeadless;
     axiomBodyPivot.add(mainChassisMesh);
 
-    // Part 2, 3, 4: o-Llama / AXIOM-7 Signature Chest Controls
-    // Signature Yellow Cross / Plus (+) Button on Left Chest (#FFD600)
+    // Part 2: Left Chest — Signature Yellow Cross (+) Button + Horizontal Slot Underneath
     const yellowPlusGroup = new THREE.Group();
-    yellowPlusGroup.position.set(-0.34, 0.84, 0.56);
-    const plusVertGeo = new THREE.BoxGeometry(0.11, 0.32, 0.08);
-    const plusHorizGeo = new THREE.BoxGeometry(0.32, 0.11, 0.08);
-    yellowPlusGroup.add(new THREE.Mesh(plusVertGeo, yellowBtnMat));
-    yellowPlusGroup.add(new THREE.Mesh(plusHorizGeo, yellowBtnMat));
+    yellowPlusGroup.position.set(-0.32, 0.95, 0.55);
+    // Black outline backing for the yellow cross
+    yellowPlusGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.44, 0.05), outlineBlackMat));
+    yellowPlusGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.18, 0.05), outlineBlackMat));
+    // Bright Yellow Cross (#FFD600)
+    yellowPlusGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.38, 0.09), yellowBtnMat));
+    yellowPlusGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.14, 0.09), yellowBtnMat));
     axiomBodyPivot.add(yellowPlusGroup);
 
-    // Control Lights on Right Chest (Red Button #FF1744 & Signature Green LED #00C853)
-    const btnGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.08, 16);
-    btnGeo.rotateX(Math.PI / 2);
-    const redBtn = new THREE.Mesh(btnGeo, redBtnMat);
-    redBtn.position.set(0.12, 0.74, 0.56);
-    axiomBodyPivot.add(redBtn);
+    // Horizontal Dark Recessed Slot directly beneath Yellow Cross
+    const chestSlotMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.34, 0.08, 0.06),
+      outlineBlackMat
+    );
+    chestSlotMesh.position.set(-0.32, 0.62, 0.54);
+    axiomBodyPivot.add(chestSlotMesh);
 
-    const ledGeo = new THREE.SphereGeometry(0.085, 12, 12);
-    const greenLed = new THREE.Mesh(ledGeo, greenLedMat);
-    greenLed.position.set(0.36, 0.92, 0.55);
-    axiomBodyPivot.add(greenLed);
+    // Part 3 & 4: Right Chest — Recessed Vertical Panel with 3 Stacked Circular LEDs (Green -> Yellow -> Red)
+    const rightPanelHousing = new THREE.Mesh(
+      new THREE.BoxGeometry(0.44, 0.72, 0.06),
+      frameDarkMat
+    );
+    rightPanelHousing.position.set(0.34, 0.88, 0.54);
+    axiomBodyPivot.add(rightPanelHousing);
 
-    // Articulated Left & Right Claw Grippers (o-Llama signature short gripper arms)
-    const leftGripperGroup = new THREE.Group();
-    leftGripperGroup.position.set(-0.88, 0.88, 0.18);
-    const armSegmentGeo = new THREE.BoxGeometry(0.22, 0.38, 0.28);
-    const clawProngGeo = new THREE.BoxGeometry(0.08, 0.2, 0.24);
-    const leftArmSeg = new THREE.Mesh(armSegmentGeo, bezelMat);
-    leftGripperGroup.add(leftArmSeg);
-    const leftProngL = new THREE.Mesh(clawProngGeo, frameDarkMat);
-    leftProngL.position.set(-0.08, -0.24, 0.12);
-    leftGripperGroup.add(leftProngL);
-    const leftProngR = new THREE.Mesh(clawProngGeo, frameDarkMat);
-    leftProngR.position.set(0.08, -0.24, 0.12);
-    leftGripperGroup.add(leftProngR);
+    // 1. Top Large Glowing Green LED (#00E676)
+    const topGreenLed = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 16), greenLedMat);
+    topGreenLed.position.set(0.34, 1.07, 0.57);
+    axiomBodyPivot.add(topGreenLed);
+
+    // 2. Middle Medium Yellow LED (#FFD600)
+    const midYellowLed = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 14), yellowBtnMat);
+    midYellowLed.position.set(0.34, 0.86, 0.57);
+    axiomBodyPivot.add(midYellowLed);
+
+    // 3. Bottom Red Indicator Button/LED (#FF1744)
+    const botRedLed = new THREE.Mesh(new THREE.SphereGeometry(0.095, 16, 16), redBtnMat);
+    botRedLed.position.set(0.34, 0.66, 0.57);
+    axiomBodyPivot.add(botRedLed);
+
+    // Part 5: Articulated Ball-Shoulder Arms & C-Shaped Pincer Claws
+    function buildArticulatedArm(sideSign: -1 | 1): THREE.Group {
+      const armRoot = new THREE.Group();
+      armRoot.position.set(sideSign * 0.86, 1.12, 0.08);
+
+      // Spherical Shoulder Ball Joint
+      const shoulderBall = new THREE.Mesh(
+        new THREE.SphereGeometry(0.19, 16, 16),
+        bezelSteelMat
+      );
+      armRoot.add(shoulderBall);
+
+      // Upper & Forearm Cylindrical Segments with Silver Collar
+      const upperArm = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.13, 0.15, 0.36, 14),
+        bezelSteelMat
+      );
+      upperArm.position.set(sideSign * 0.06, -0.22, 0.06);
+      upperArm.rotation.z = sideSign * 0.18;
+      armRoot.add(upperArm);
+
+      const silverCollar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.16, 0.08, 14),
+        silverHighlightMat
+      );
+      silverCollar.position.set(sideSign * 0.08, -0.34, 0.1);
+      armRoot.add(silverCollar);
+
+      // C-Shaped Pincer Claw Assembly
+      const clawWrist = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.12, 0.24),
+        silverHighlightMat
+      );
+      clawWrist.position.set(sideSign * 0.08, -0.44, 0.14);
+      armRoot.add(clawWrist);
+
+      const prongGeo = new THREE.BoxGeometry(0.08, 0.24, 0.22);
+      const innerProng = new THREE.Mesh(prongGeo, silverHighlightMat);
+      innerProng.position.set(sideSign * 0.08 - 0.09, -0.58, 0.16);
+      innerProng.rotation.z = 0.15;
+      armRoot.add(innerProng);
+
+      const outerProng = new THREE.Mesh(prongGeo, bezelSteelMat);
+      outerProng.position.set(sideSign * 0.08 + 0.09, -0.58, 0.16);
+      outerProng.rotation.z = -0.15;
+      armRoot.add(outerProng);
+
+      return armRoot;
+    }
+
+    const leftGripperGroup = buildArticulatedArm(-1);
     axiomBodyPivot.add(leftGripperGroup);
 
-    const rightGripperGroup = new THREE.Group();
-    rightGripperGroup.position.set(0.88, 0.88, 0.18);
-    const rightArmSeg = new THREE.Mesh(armSegmentGeo, bezelMat);
-    rightGripperGroup.add(rightArmSeg);
-    const rightProngL = new THREE.Mesh(clawProngGeo, frameDarkMat);
-    rightProngL.position.set(-0.08, -0.24, 0.12);
-    rightGripperGroup.add(rightProngL);
-    const rightProngR = new THREE.Mesh(clawProngGeo, frameDarkMat);
-    rightProngR.position.set(0.08, -0.24, 0.12);
-    rightGripperGroup.add(rightProngR);
+    const rightGripperGroup = buildArticulatedArm(1);
     axiomBodyPivot.add(rightGripperGroup);
 
     // Deployable 3D Mini-Laptop for EX-07 Working ("Arbejder") State
     const laptopGroup = new THREE.Group();
-    laptopGroup.position.set(0, 0.82, 0.82);
-    const laptopBase = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.06, 0.65), bezelMat);
+    laptopGroup.position.set(0, 0.78, 0.82);
+    const laptopBase = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.06, 0.65), bezelSteelMat);
     laptopGroup.add(laptopBase);
     const laptopScreen = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.58, 0.06), frameDarkMat);
     laptopScreen.position.set(0, 0.28, 0.28);
     laptopScreen.rotation.x = -0.25;
     laptopGroup.add(laptopScreen);
+    const laptopLogoDot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 0.1, 0.08),
+      silverHighlightMat
+    );
+    laptopLogoDot.position.set(0, 0.28, 0.3);
+    laptopGroup.add(laptopLogoDot);
     laptopGroup.visible = false;
     axiomBodyPivot.add(laptopGroup);
 
-    // Part 5: Neck Pivot (Cylindrical joint 1 unit)
-    const neckGeo = new THREE.CylinderGeometry(0.28, 0.32, 0.32, 20);
-    const neckMesh = new THREE.Mesh(neckGeo, bezelMat);
-    neckMesh.position.set(0, 1.4, 0);
+    // Part 6: Segmented Cylindrical Neck Pivot (with metallic collar)
+    const neckGeo = new THREE.CylinderGeometry(0.28, 0.32, 0.34, 20);
+    const neckMesh = new THREE.Mesh(neckGeo, bezelSteelMat);
+    neckMesh.position.set(0, 1.48, 0);
     axiomBodyPivot.add(neckMesh);
 
-    // Part 6 & 7: Head Assembly (Morphs proportions between Landscape Ver. A and Square Monitor Ver. B/C)
+    const neckCollarMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34, 0.34, 0.08, 20),
+      silverHighlightMat
+    );
+    neckCollarMesh.position.set(0, 1.44, 0);
+    axiomBodyPivot.add(neckCollarMesh);
+
+    // Part 7: Rounded-Bezel Head Assembly + Left/Right Circular Ear Hubs + Top Red Sensor Dome
     const headGroup = new THREE.Group();
-    headGroup.position.set(0, 2.12, 0);
+    headGroup.position.set(0, 2.16, 0);
     axiomBodyPivot.add(headGroup);
 
-    const headHousingGeo = new THREE.BoxGeometry(1.85, 1.25, 1.05);
-    const headHousingMesh = new THREE.Mesh(headHousingGeo, bezelMat);
+    const headHousingGeo = new THREE.BoxGeometry(1.94, 1.28, 1.06);
+    const headHousingMesh = new THREE.Mesh(headHousingGeo, bezelSteelMat);
     headHousingMesh.castShadow = !isHeadless;
     headGroup.add(headHousingMesh);
 
-    // Top Red Sensor Cap on Head (from o-Llama spritesheet)
-    const topSensorCap = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.1, 0.36), redBtnMat);
-    topSensorCap.position.set(0, 0.66, 0);
+    // Top Silver Specular Rim on Head
+    const headTopRim = new THREE.Mesh(
+      new THREE.BoxGeometry(1.96, 0.08, 1.08),
+      silverHighlightMat
+    );
+    headTopRim.position.set(0, 0.62, 0);
+    headGroup.add(headTopRim);
+
+    // Top Red Sensor Dome + Specular Highlight Strip (matching o-Llama-Axiom-01..14)
+    const topSensorBase = new THREE.Mesh(
+      new THREE.BoxGeometry(0.62, 0.14, 0.44),
+      outlineBlackMat
+    );
+    topSensorBase.position.set(0, 0.7, 0);
+    headGroup.add(topSensorBase);
+
+    const topSensorCap = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.16, 0.38), redBtnMat);
+    topSensorCap.position.set(0, 0.73, 0);
     headGroup.add(topSensorCap);
 
-    const headBezelGeo = new THREE.BoxGeometry(1.68, 1.08, 0.08);
+    // Circular Ear-Joint Hubs on BOTH Left & Right Sides of Head
+    const earRimGeo = new THREE.CylinderGeometry(0.26, 0.26, 0.16, 20);
+    earRimGeo.rotateZ(Math.PI / 2);
+    const earInnerGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.19, 20);
+    earInnerGeo.rotateZ(Math.PI / 2);
+
+    const leftEarRim = new THREE.Mesh(earRimGeo, silverHighlightMat);
+    leftEarRim.position.set(-1.02, -0.04, 0);
+    headGroup.add(leftEarRim);
+    const leftEarInner = new THREE.Mesh(earInnerGeo, frameDarkMat);
+    leftEarInner.position.set(-1.02, -0.04, 0);
+    headGroup.add(leftEarInner);
+
+    const rightEarRim = new THREE.Mesh(earRimGeo, silverHighlightMat);
+    rightEarRim.position.set(1.02, -0.04, 0);
+    headGroup.add(rightEarRim);
+    const rightEarInner = new THREE.Mesh(earInnerGeo, frameDarkMat);
+    rightEarInner.position.set(1.02, -0.04, 0);
+    headGroup.add(rightEarInner);
+
+    // MonitorSide Tuner Knob (for Wizard/Cosmic)
+    const sideKnobGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.24, 16);
+    sideKnobGeo.rotateZ(Math.PI / 2);
+    const sideKnobMesh = new THREE.Mesh(sideKnobGeo, yellowBtnMat);
+    sideKnobMesh.position.set(1.06, -0.04, 0);
+    headGroup.add(sideKnobMesh);
+
+    const headBezelGeo = new THREE.BoxGeometry(1.74, 1.1, 0.08);
     const headBezelMesh = new THREE.Mesh(headBezelGeo, frameDarkMat);
-    headBezelMesh.position.set(0, 0, 0.51);
+    headBezelMesh.position.set(0, 0, 0.52);
     headGroup.add(headBezelMesh);
 
-    const screenGeo = new THREE.PlaneGeometry(1.56, 0.96);
+    const screenGeo = new THREE.PlaneGeometry(1.62, 0.98);
     const screenMesh = new THREE.Mesh(screenGeo, screenFaceMat);
-    screenMesh.position.set(0, 0, 0.56);
+    screenMesh.position.set(0, 0, 0.57);
     headGroup.add(screenMesh);
 
-    // Secondary Rear Diagnostic Screen so AXIOM-7's active eye expression is also visible from behind in 3rd-person chase cam
+    // Secondary Rear Diagnostic Screen so active eye expression is also visible from behind in 3rd-person chase cam
     const rearBezelMesh = new THREE.Mesh(headBezelGeo, frameDarkMat);
-    rearBezelMesh.position.set(0, 0, -0.51);
+    rearBezelMesh.position.set(0, 0, -0.52);
     headGroup.add(rearBezelMesh);
 
     const rearScreenMesh = new THREE.Mesh(screenGeo, screenFaceMat);
-    rearScreenMesh.position.set(0, 0, -0.56);
+    rearScreenMesh.position.set(0, 0, -0.57);
     rearScreenMesh.rotation.y = Math.PI;
     headGroup.add(rearScreenMesh);
 
-    // Part 8: Monitor Side Tuner Knob (Right side knob for Version B/C)
-    const sideKnobGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.22, 16);
-    sideKnobGeo.rotateZ(Math.PI / 2);
-    const sideKnobMesh = new THREE.Mesh(sideKnobGeo, yellowBtnMat);
-    sideKnobMesh.position.set(1.02, 0, 0.1);
-    headGroup.add(sideKnobMesh);
-
-    // Part 9 & 10: Dual Tank Treads (Left & Right 8-segment treads)
+    // Part 9 & 10: Dual Caterpillar Tank Treads with 2 Side Road Wheels + Central Undercarriage Block
     const treadsGroup = new THREE.Group();
     axiomBodyPivot.add(treadsGroup);
 
-    const treadBodyGeo = new THREE.BoxGeometry(0.46, 0.52, 1.55);
-    const leftTread = new THREE.Mesh(treadBodyGeo, frameDarkMat);
-    leftTread.position.set(-0.92, 0.32, 0);
+    const treadBodyGeo = new THREE.BoxGeometry(0.54, 0.56, 1.58);
+    const leftTread = new THREE.Mesh(treadBodyGeo, treadPlateMat);
+    leftTread.position.set(-0.62, 0.3, 0);
     leftTread.castShadow = !isHeadless;
     treadsGroup.add(leftTread);
 
-    const rightTread = new THREE.Mesh(treadBodyGeo, frameDarkMat);
-    rightTread.position.set(0.92, 0.32, 0);
+    const rightTread = new THREE.Mesh(treadBodyGeo, treadPlateMat);
+    rightTread.position.set(0.62, 0.3, 0);
     rightTread.castShadow = !isHeadless;
     treadsGroup.add(rightTread);
+
+    // Central Dark Undercarriage Block between treads
+    const undercarriageMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.68, 0.42, 1.12),
+      frameDarkMat
+    );
+    undercarriageMesh.position.set(0, 0.32, 0);
+    treadsGroup.add(undercarriageMesh);
+
+    // Two Circular Side Road Wheels (O)(O) on Left and Right Treads
+    const wheelRimGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.08, 16);
+    wheelRimGeo.rotateZ(Math.PI / 2);
+    const wheelHubGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.1, 12);
+    wheelHubGeo.rotateZ(Math.PI / 2);
+
+    [-0.9, 0.9].forEach((sideX) => {
+      [-0.36, 0.36].forEach((wheelZ) => {
+        const wRim = new THREE.Mesh(wheelRimGeo, bezelSteelMat);
+        wRim.position.set(sideX, 0.28, wheelZ);
+        treadsGroup.add(wRim);
+        const wHub = new THREE.Mesh(wheelHubGeo, outlineBlackMat);
+        wHub.position.set(sideX, 0.28, wheelZ);
+        treadsGroup.add(wHub);
+      });
+    });
 
     // Part 11: Wizard Hat + Gold Buckle (Version B)
     const wizardHatGroup = new THREE.Group();
@@ -1191,8 +1839,8 @@ export default function AxiomThreeCanvas({
     // Player & Simulation Mutable State
     const simState = {
       playerX: 0,
-      playerZ: 3.5, // Spawn on open path facing clear vista
-      playerRotY: Math.PI,
+      playerZ: 3.5, // Spawn on open path facing camera in 3/4 view
+      playerRotY: -0.22,
       vx: 0,
       vz: 0,
       hp: 5,
@@ -1213,6 +1861,7 @@ export default function AxiomThreeCanvas({
       scaleY: 1,
       walkDistance: 0,
       spawnCheckTimer: 1.5,
+      chapterCompleteFired: false,
     };
 
     // Unified Input Hub (Held vs JustPressed + Window Blur Reset)
@@ -1220,9 +1869,9 @@ export default function AxiomThreeCanvas({
     const keysJustPressed = new Set<string>();
 
     const onKeyDown = (e: KeyboardEvent) => {
-      // Ignore shortcuts if typing inside an input/textarea
+      // Ignore shortcuts if typing inside an input/textarea/select
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
       const code = e.code;
       if (!keysHeld.has(code)) {
@@ -1247,6 +1896,7 @@ export default function AxiomThreeCanvas({
     // Pre-load Chapter 0
     loadChapterScene(propsRef.current.chapterIndex);
     externalCommandRef.current.lastChapterIndex = propsRef.current.chapterIndex;
+    externalCommandRef.current.lastResetCount = propsRef.current.sessionResetCount;
     renderer.compile(scene, camera);
 
     const handleResize = () => {
@@ -1260,8 +1910,8 @@ export default function AxiomThreeCanvas({
     window.addEventListener('resize', handleResize);
 
     // Trigger Player Pulse Scan Attack
-    function triggerPlayerPulse() {
-      if (simState.pulseCooldownTimer > 0) return;
+    function triggerPlayerPulse(ignoreCooldown = false) {
+      if (!ignoreCooldown && simState.pulseCooldownTimer > 0) return;
       const cSpec = CHASSIS_SPECS[propsRef.current.chassis];
       simState.pulseCooldownTimer =
         propsRef.current.expression === 'EX-07'
@@ -1300,7 +1950,7 @@ export default function AxiomThreeCanvas({
           entry.data.x - simState.playerX,
           entry.data.z - simState.playerZ
         );
-        const dmgRes = calculatePulseDamage(
+        const dmgRes = computeWasmPulseDamage(
           propsRef.current.chassis,
           propsRef.current.expression,
           dist
@@ -1342,46 +1992,130 @@ export default function AxiomThreeCanvas({
       }
     }
 
+    // Tactical Sector Sweep [Q]: Dashes to nearest uncollected Tome or active Anomaly and fires a Truth Pulse
+    function triggerTacticalSectorSweep() {
+      const cScene = CHAPTER_SCENES[propsRef.current.chapterIndex] || CHAPTER_SCENES[0];
+      const nextTome = activeTomes.find((t) => !t.collected);
+      const nextEnemy = activeEnemies.find((e) => e.data.state !== 'ko');
+
+      if (nextTome) {
+        simState.playerX = nextTome.x;
+        simState.playerZ = nextTome.z;
+        nextTome.collected = true;
+        nextTome.mesh.visible = false;
+        simState.tomesCollected += 1;
+        simState.score += 200;
+        if (!simState.pillarsUnlocked.includes(nextTome.pillar)) {
+          simState.pillarsUnlocked = [...simState.pillarsUnlocked, nextTome.pillar];
+        }
+        simState.celebrationTimer = 1.2;
+        soundSynth.playTomePickup();
+        spawnParticleBurst(nextTome.x, 1.0, nextTome.z, '#00C853', 18);
+      } else if (nextEnemy) {
+        simState.playerX = nextEnemy.data.x * 0.85;
+        simState.playerZ = nextEnemy.data.z * 0.85;
+        soundSynth.playDash();
+      } else if (simState.purgesCount < cScene.targetPurges) {
+        const types: EnemyArchetype[] = ['swarmer', 'emitter', 'charger'];
+        spawnEnemy(types[simState.purgesCount % 3], simState.purgesCount);
+        const newlySpawned = activeEnemies[activeEnemies.length - 1];
+        if (newlySpawned) {
+          simState.playerX = newlySpawned.data.x * 0.85;
+          simState.playerZ = newlySpawned.data.z * 0.85;
+        }
+      }
+      triggerPlayerPulse(true);
+    }
+
     let animFrameId = 0;
+    let softwareTimerId = 0;
+    let isDisposed = false;
     let lastTime = performance.now();
     let hudSyncAccumulator = 0;
 
-    const animate = (now: number) => {
-      animFrameId = requestAnimationFrame(animate);
-
-      const rawDt = (now - lastTime) / 1000;
-      // Throttle headless software rendering to ~15fps so screenshots never stall
-      if (isHeadless && rawDt < 0.06) {
-        return;
+    function afterDraw(cb: () => void) {
+      if (isDisposed || !renderer) return;
+      const gl = renderer.getContext() as WebGL2RenderingContext;
+      if (typeof gl.fenceSync === 'function') {
+        const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        const poll = () => {
+          if (isDisposed) return;
+          const state = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
+          if (state === gl.UNSIGNALED) {
+            softwareTimerId = window.setTimeout(poll, 5);
+          } else {
+            if (sync) gl.deleteSync(sync);
+            softwareTimerId = window.setTimeout(cb, 80);
+          }
+        };
+        softwareTimerId = window.setTimeout(poll, 5);
+      } else {
+        softwareTimerId = window.setTimeout(cb, 80);
       }
+    }
+
+    const animate = () => {
+      if (isDisposed) return;
+      const now = performance.now();
+      const rawDt = (now - lastTime) / 1000;
       lastTime = now;
       const dt = clampDeltaTime(rawDt);
       const elapsed = now / 1000;
 
       const currentProps = propsRef.current;
 
-      // Detect chapter switch
-      if (externalCommandRef.current.lastChapterIndex !== currentProps.chapterIndex) {
+      // Detect chapter switch OR explicit session reset (Start / Restart / Try Again)
+      if (
+        externalCommandRef.current.lastChapterIndex !== currentProps.chapterIndex ||
+        externalCommandRef.current.lastResetCount !== currentProps.sessionResetCount
+      ) {
         externalCommandRef.current.lastChapterIndex = currentProps.chapterIndex;
+        externalCommandRef.current.lastResetCount = currentProps.sessionResetCount;
         simState.playerX = 0;
         simState.playerZ = 3.5;
-        simState.playerRotY = Math.PI;
+        simState.playerRotY = -0.22;
+        simState.vx = 0;
+        simState.vz = 0;
         simState.hp = 5;
         simState.tomesCollected = 0;
         simState.purgesCount = 0;
         simState.pillarsUnlocked = [];
+        simState.chapterCompleteFired = false;
         loadChapterScene(currentProps.chapterIndex);
+        const cSpec = CHAPTER_SCENES[currentProps.chapterIndex] || CHAPTER_SCENES[0];
+        currentProps.onUpdateSnapshot({
+          hp: simState.hp,
+          maxHp: simState.maxHp,
+          score: simState.score,
+          tomesCollected: 0,
+          targetTomes: cSpec.targetTomes,
+          purgesCount: 0,
+          targetPurges: cSpec.targetPurges,
+          pillarsUnlocked: [],
+          nearbyTomeClaimIndex: null,
+        });
       }
 
       // Detect UI button pulse trigger
-      if (pulseTriggerCount !== externalCommandRef.current.lastPulseCount) {
-        externalCommandRef.current.lastPulseCount = pulseTriggerCount;
-        triggerPlayerPulse();
+      if (currentProps.pulseTriggerCount !== externalCommandRef.current.lastPulseCount) {
+        externalCommandRef.current.lastPulseCount = currentProps.pulseTriggerCount;
+        triggerPlayerPulse(true);
+      }
+
+      // Detect Tactical Sector Sweep trigger
+      if (currentProps.sweepTriggerCount !== externalCommandRef.current.lastSweepCount) {
+        externalCommandRef.current.lastSweepCount = currentProps.sweepTriggerCount;
+        triggerTacticalSectorSweep();
       }
 
       // Detect Truth Analyzer verification celebration
-      if (verifiedCelebrationCount !== externalCommandRef.current.lastCelebrationCount) {
-        externalCommandRef.current.lastCelebrationCount = verifiedCelebrationCount;
+      if (
+        currentProps.verifiedCelebrationCount !==
+        externalCommandRef.current.lastCelebrationCount
+      ) {
+        externalCommandRef.current.lastCelebrationCount =
+          currentProps.verifiedCelebrationCount;
         simState.celebrationTimer = 2.0;
         simState.score += 250;
         simState.hp = Math.min(simState.maxHp, simState.hp + 1);
@@ -1557,9 +2291,12 @@ export default function AxiomThreeCanvas({
             spawnParticleBurst(simState.playerX, 0.5, simState.playerZ, '#00E5FF', 8);
           }
 
-          // Edge-triggered Pulse Scan (Space)
+          // Edge-triggered Pulse Scan (Space) or Tactical Sector Sweep (Q)
           if (keysJustPressed.has('Space')) {
             triggerPlayerPulse();
+          }
+          if (keysJustPressed.has('KeyQ')) {
+            triggerTacticalSectorSweep();
           }
 
           if (moveLen > 0) {
@@ -1774,8 +2511,9 @@ export default function AxiomThreeCanvas({
             spawnEnemy(types[simState.purgesCount % 3], simState.purgesCount);
           }
 
-          // Check Chapter Victory Condition
+          // Check Chapter Victory Condition (fire once per chapter completion)
           if (
+            !simState.chapterCompleteFired &&
             checkChapterVictory({
               tomesCollected: simState.tomesCollected,
               targetTomes: cScene.targetTomes,
@@ -1783,6 +2521,18 @@ export default function AxiomThreeCanvas({
               targetPurges: cScene.targetPurges,
             })
           ) {
+            simState.chapterCompleteFired = true;
+            currentProps.onUpdateSnapshot({
+              hp: simState.hp,
+              maxHp: simState.maxHp,
+              score: simState.score,
+              tomesCollected: simState.tomesCollected,
+              targetTomes: cScene.targetTomes,
+              purgesCount: simState.purgesCount,
+              targetPurges: cScene.targetPurges,
+              pillarsUnlocked: simState.pillarsUnlocked,
+              nearbyTomeClaimIndex: closestTomeClaim,
+            });
             soundSynth.playTruthVerified(true);
             currentProps.onChapterComplete();
           }
@@ -1858,17 +2608,30 @@ export default function AxiomThreeCanvas({
 
       keysJustPressed.clear();
       renderer.render(scene, camera);
+
+      if (isSoftwareGl) {
+        afterDraw(animate);
+      } else {
+        animFrameId = requestAnimationFrame(animate);
+      }
     };
 
     animFrameId = requestAnimationFrame(animate);
 
     return () => {
+      isDisposed = true;
       cancelAnimationFrame(animFrameId);
+      clearTimeout(softwareTimerId);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', clearInputs);
       window.removeEventListener('resize', handleResize);
-      renderer.dispose();
+      try {
+        renderer.domElement.removeEventListener('webglcontextlost', onWebGLContextLost, false);
+        renderer.dispose();
+      } catch {
+        // Ignore disposal errors if context was already lost
+      }
     };
   }, []);
 
@@ -1876,7 +2639,7 @@ export default function AxiomThreeCanvas({
     <div
       ref={mountRef}
       data-testid="axiom-webgl-canvas"
-      className="fixed inset-0 w-screen h-screen overflow-hidden z-0"
+      className="fixed inset-0 w-screen h-screen overflow-hidden z-0 gpu-accelerated"
     />
   );
 }

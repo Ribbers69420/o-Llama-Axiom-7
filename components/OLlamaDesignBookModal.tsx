@@ -29,7 +29,20 @@ const SCALES: { size: SpriteScaleSize; labelDa: string; labelEn: string }[] = [
   { size: 240, labelDa: 'Stor · 240 px', labelEn: 'Large · 240 px' },
 ];
 
-const MOODS: { id: EnvironmentMoodId; labelDa: string; labelEn: string; descDa: string; descEn: string }[] = [
+const MOODS: {
+  id: EnvironmentMoodId;
+  labelDa: string;
+  labelEn: string;
+  descDa: string;
+  descEn: string;
+}[] = [
+  {
+    id: 'studio',
+    labelDa: 'Studio (Original)',
+    labelEn: 'Studio (Original)',
+    descDa: 'Ren hvid studiebaggrund som i de 14 originale o-Llama-Axiom-01..14 karakterark.',
+    descEn: 'Clean white studio backdrop matching the 14 original o-Llama-Axiom-01..14 character sheets.',
+  },
   {
     id: 'vaerksted',
     labelDa: 'Værksted',
@@ -59,7 +72,7 @@ export default function OLlamaDesignBookModal({
   onClose,
   onApplyExpressionTo3D,
 }: OLlamaDesignBookModalProps) {
-  const [mood, setMood] = useState<EnvironmentMoodId>('vaerksted');
+  const [mood, setMood] = useState<EnvironmentMoodId>('studio');
   const [scaleSize, setScaleSize] = useState<SpriteScaleSize>(192);
   const [animateOriginal, setAnimateOriginal] = useState<boolean>(true);
   const [selectedAnimId, setSelectedAnimId] = useState<OLlamaAnimationId>('hvile');
@@ -94,7 +107,11 @@ export default function OLlamaDesignBookModal({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={isDa ? 'o-Llama - Axiom · Finpudsning · pixelstil' : 'o-Llama - Axiom · Pixel Refinement Design Book'}
+      aria-label={
+        isDa
+          ? 'o-Llama - Axiom · Finpudsning · pixelstil'
+          : 'o-Llama - Axiom · Pixel Refinement Design Book'
+      }
       className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6 bg-[rgba(5,5,16,0.86)] pointer-events-auto"
     >
       <div className="w-full max-w-6xl bg-[#0B1020] border-2 border-[#00E5FF] rounded-lg shadow-2xl overflow-hidden text-white flex flex-col max-h-[90vh]">
@@ -108,7 +125,7 @@ export default function OLlamaDesignBookModal({
                   o-Llama - Axiom
                 </h2>
                 <span className="text-xs font-mono text-[#00E5FF]">
-                  · {isDa ? 'Finpudsning · pixelstil' : 'Refinement · Pixel Style'}
+                  · {isDa ? 'Finpudsning · pixelstil (01–14 + 8×9 Ark)' : 'Pixel Style (01–14 + 8×9 Sheet)'}
                 </span>
               </div>
               <p className="text-xs text-slate-300">
@@ -150,7 +167,7 @@ export default function OLlamaDesignBookModal({
           <div className="p-5 rounded-lg bg-[#10182E] border border-slate-700/80 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
             <div className="space-y-1.5 max-w-2xl">
               <div className="text-xs font-mono uppercase tracking-widest text-[#FFD600]">
-                THE TOKEN OF TRUST · UDARBEJDET 2.–3. OKTOBER 2026
+                THE TOKEN OF TRUST · 14 KANONISKE POSITURER + 8×9 SPRITESHEET
               </div>
               <h3 className="text-2xl sm:text-3xl font-bold font-[family-name:var(--font-display)] text-white">
                 {isDa
@@ -159,8 +176,8 @@ export default function OLlamaDesignBookModal({
               </h3>
               <p className="text-sm text-slate-300 leading-relaxed">
                 {isDa
-                  ? 'Din o-Llama, videreudviklet med tydelige pixels, et rigere kropssprog og AXIOMs nysgerrighed. Krydsknap (+), kontrollys, gribere og larvebånd binder eksemplerne sammen.'
-                  : 'Your o-Llama, evolved with crisp pixels, richer body language, and AXIOM curiosity. Yellow cross button (+), status LEDs, claw grippers, and tank treads bind the studies together.'}
+                  ? 'Opdateret visuel repræsentation med 3/4 metallisk børstet stål, runde øreled, rød top-sensor, gul krydsknap (+) med rille under, 3 lodrette kontrollys (grøn/gul/rød), C-gribekløer og larvebånd med 2 synlige sidehjul.'
+                  : 'Updated visual representation featuring 3/4 brushed steel bevels, circular side ear-hubs, red top sensor dome, yellow cross (+) with bottom slot, 3 stacked LEDs (green/yellow/red), C-claw pincers, and 2-wheel tank treads.'}
               </p>
             </div>
 
@@ -184,8 +201,8 @@ export default function OLlamaDesignBookModal({
                 <div>
                   <h4 className="text-sm font-bold uppercase tracking-wider text-[#FFD600]">
                     {isDa
-                      ? 'Komplet 8×9 o-Llama Spritesheet med ægte gennemsigtighed (Klik på en celle for at vælge animation)'
-                      : 'Complete 8×9 o-Llama Spritesheet with True Transparency (Click any cell to select row)'}
+                      ? 'Komplet 8×9 o-Llama Spritesheet (pet_6a9caa81a898819184d4992db7e8b566-spritesheet.png)'
+                      : 'Complete 8×9 o-Llama Spritesheet (pet_6a9caa81a898819184d4992db7e8b566-spritesheet.png)'}
                   </h4>
                   <p className="text-xs text-slate-400">
                     {isDa
@@ -220,15 +237,15 @@ export default function OLlamaDesignBookModal({
               </h3>
               <p className="text-xs text-slate-300 mt-1">
                 {isDa
-                  ? 'Vælg et udtryk, en størrelse og en stemning. Til venstre ser du animationer fra det nuværende kæledyr. Til højre ser du et konceptstillbillede fra 2. oktober. De tre nye eksempler fra 3. oktober følger nedenfor.'
-                  : 'Choose an expression, a scale, and a mood. On the left are animations from the active companion. On the right is the October 2 concept study, followed by the three October 3 body-language studies below.'}
+                  ? 'Til venstre ser du animationer fra det 9-rækkers spritesheet. Til højre kan du vælge mellem samtlige 14 o-Llama-Axiom positurer (01–14).'
+                  : 'On the left are the 9 animated rows from the companion spritesheet. On the right you can inspect all 14 o-Llama-Axiom character studies (01–14).'}
               </p>
             </div>
 
             {/* Toolbar: Mood, Scale & Motion Toggle */}
             <div className="flex flex-wrap items-center justify-between gap-4 p-3.5 rounded bg-[#0E1529] border border-slate-800">
-              {/* Moods: Værksted / Arkiv / Kosmos */}
-              <div className="flex items-center gap-1.5">
+              {/* Moods: Studio / Værksted / Arkiv / Kosmos */}
+              <div className="flex flex-wrap items-center gap-1.5">
                 {MOODS.map((m) => (
                   <button
                     key={m.id}
@@ -284,8 +301,8 @@ export default function OLlamaDesignBookModal({
               <div className="p-5 rounded-lg bg-[#0E162B] border border-slate-700/80 flex flex-col justify-between space-y-4">
                 <div>
                   <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2">
-                    <span>{isDa ? 'Nuværende o-Llama' : 'Current o-Llama'}</span>
-                    <span>{isDa ? 'Kildemateriale (8×9 Ark)' : 'Source Material (8×9 Sheet)'}</span>
+                    <span>{isDa ? 'Nuværende o-Llama (9×8 Ark)' : 'Animated Spritesheet (9×8)'}</span>
+                    <span className="text-[#00E5FF]">pet_6a9caa81...spritesheet.png</span>
                   </div>
 
                   <div className="py-4 flex items-center justify-center min-h-[250px] bg-[#080C18] rounded border border-slate-800">
@@ -334,14 +351,14 @@ export default function OLlamaDesignBookModal({
                 </div>
               </div>
 
-              {/* Right Column: Oprindelige udtryksstudier & Konceptstillbillede */}
+              {/* Right Column: Alle 14 o-Llama-Axiom Positurer (01..14) */}
               <div className="p-5 rounded-lg bg-[#0E162B] border border-slate-700/80 flex flex-col justify-between space-y-4">
                 <div>
                   <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2">
                     <span>
-                      {isDa ? 'Oprindelige udtryksstudier' : 'Expression Studies'}
+                      {isDa ? 'o-Llama-Axiom Udtryksstudier (01–14)' : 'o-Llama-Axiom Poses (01–14)'}
                     </span>
-                    <span>{isDa ? 'Statiske udtryk · 2. okt' : 'Static Studies · Oct 2'}</span>
+                    <span className="text-[#FFD600]">{currentStudy.fileName}</span>
                   </div>
 
                   <div className="py-4 flex items-center justify-center min-h-[250px] bg-[#080C18] rounded border border-slate-800">
@@ -371,13 +388,13 @@ export default function OLlamaDesignBookModal({
                 <div className="pt-3 border-t border-slate-800">
                   <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-2">
                     {isDa
-                      ? 'Klik på et udtryk (brug piletaster inde i gruppen)'
-                      : 'Click an expression (use arrow keys inside group)'}
+                      ? 'Vælg blandt alle 14 o-Llama-Axiom billeder (01–14)'
+                      : 'Select from all 14 o-Llama-Axiom character studies (01–14)'}
                   </div>
                   <div
                     role="radiogroup"
                     aria-label={isDa ? 'Udtryksstudier' : 'Expression studies'}
-                    className="grid grid-cols-2 sm:grid-cols-4 gap-1.5"
+                    className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 max-h-44 overflow-y-auto pr-1"
                   >
                     {OLLAMA_EXPRESSION_STUDIES.map((st, idx) => (
                       <button
@@ -390,7 +407,7 @@ export default function OLlamaDesignBookModal({
                           setSelectedStudyId(st.id);
                           onApplyExpressionTo3D(st.expressionCode, st.id);
                         }}
-                        className={`text-left px-2.5 py-1.5 rounded border text-xs transition-colors cursor-pointer ${
+                        className={`text-left px-2 py-1.5 rounded border text-xs transition-colors cursor-pointer ${
                           selectedStudyId === st.id
                             ? 'bg-[#192D5A] border-[#00E5FF] text-white font-bold'
                             : 'bg-[#121B34] border-slate-700/80 text-slate-300 hover:border-slate-500'
@@ -407,70 +424,57 @@ export default function OLlamaDesignBookModal({
               </div>
             </div>
 
-            {/* Nyt · 3. oktober 2026: Tre eksempler på kropssprog */}
+            {/* Komplet Galleri: Alle 14 o-Llama-Axiom Karakterbilleder (01–14) */}
             <div className="p-5 rounded-lg bg-[#101830] border border-[#00E5FF]/40 space-y-4">
               <div>
                 <div className="text-xs font-mono text-[#FFD600]">
-                  {isDa ? 'Nyt · 3. oktober 2026' : 'New · October 3, 2026'}
+                  {isDa
+                    ? 'KOMPLET VISUELT ARKIV · O-LLAMA-AXIOM-01 TIL 14'
+                    : 'COMPLETE VISUAL ARCHIVE · O-LLAMA-AXIOM-01 TO 14'}
                 </div>
                 <h4 className="text-lg font-bold text-white">
                   {isDa
-                    ? 'Tre eksempler på kropssprog'
-                    : 'Three Examples of Body Language'}
+                    ? 'Alle 14 udtryk og kropssprog samlet'
+                    : 'All 14 Expressions and Body-Language Studies'}
                 </h4>
                 <p className="text-xs text-slate-300">
                   {isDa
-                    ? 'Den samme robot undersøgt i tre daglige situationer. Krydsknap, kontrollys, gribere og larvebånd binder eksemplerne sammen. Afventer og Gennemgår deler ringøjne; hovedvinkel og hænder viser forskellen.'
-                    : 'The same robot explored across three daily situations. Cross button, status LEDs, grippers, and treads bind the examples together. Awaiting and Reviewing share ring eyes; head angle and hands show the difference.'}
+                    ? 'Klik på et kort for at inspicere det i stor størrelse og anvende udtrykket direkte på 3D-modellen.'
+                    : 'Click any card to inspect at full scale and apply its expression directly to the 3D robot.'}
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {(
-                  [
-                    'afventer-dig',
-                    'gennemgaar',
-                    'arbejder',
-                  ] as OLlamaStudyId[]
-                ).map((sId) => {
-                  const st = OLLAMA_EXPRESSION_STUDIES.find((x) => x.id === sId)!;
-                  return (
-                    <div
-                      key={st.id}
-                      className="p-4 rounded bg-[#0A1020] border border-slate-700/80 flex flex-col justify-between gap-3"
-                    >
-                      <div className="space-y-2">
-                        <OLlamaPixelCanvas
-                          mode="static-study"
-                          studyId={st.id}
-                          scaleSize={120}
-                          mood={mood}
-                        />
-                        <div className="flex items-center justify-between pt-2">
-                          <h5 className="text-sm font-bold text-white">
-                            {isDa ? st.labelDa : st.labelEn}
-                          </h5>
-                          <span className="text-[11px] font-mono text-[#00E5FF]">
-                            {isDa ? st.subLabelDa : st.subLabelEn}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-300 leading-relaxed">
-                          {isDa ? st.descDa : st.descEn}
-                        </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                {OLLAMA_EXPRESSION_STUDIES.map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedStudyId(st.id);
+                      onApplyExpressionTo3D(st.expressionCode, st.id);
+                    }}
+                    className={`p-2.5 rounded border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                      selectedStudyId === st.id
+                        ? 'bg-[#172852] border-[#00E5FF] shadow-lg'
+                        : 'bg-[#0A1020] border-slate-800 hover:border-slate-600'
+                    }`}
+                  >
+                    <OLlamaPixelCanvas
+                      mode="static-study"
+                      studyId={st.id}
+                      scaleSize={120}
+                      mood={mood}
+                    />
+                    <div>
+                      <div className="text-xs font-bold text-white truncate">
+                        {isDa ? st.labelDa : st.labelEn}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedStudyId(st.id);
-                          onApplyExpressionTo3D(st.expressionCode, st.id);
-                        }}
-                        className="w-full py-1.5 rounded text-xs font-semibold bg-[#182649] hover:bg-[#223566] text-[#00E5FF] transition-colors cursor-pointer"
-                      >
-                        {isDa ? 'Forhåndsvis positur' : 'Preview Posture'}
-                      </button>
+                      <div className="text-[10px] font-mono text-[#FFD600] truncate">
+                        {isDa ? st.subLabelDa : st.subLabelEn}
+                      </div>
                     </div>
-                  );
-                })}
+                  </button>
+                ))}
               </div>
             </div>
           </section>
@@ -489,43 +493,43 @@ export default function OLlamaDesignBookModal({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-4 rounded bg-[#0E162B] border border-slate-800">
                 <div className="text-xs font-mono text-[#00E5FF] mb-1">
-                  {isDa ? '01 / SKÆRMEN' : '01 / THE SCREEN'}
+                  {isDa ? '01 / SKÆRMEN & ØRELED' : '01 / SCREEN & EAR HUBS'}
                 </div>
                 <h4 className="text-sm font-bold text-white mb-1">
-                  {isDa ? 'Et ansigt af pixels' : 'A Face of Pixels'}
+                  {isDa ? 'Et ansigt af pixels med rød top-sensor' : 'A Face of Pixels with Red Sensor Dome'}
                 </h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
                   {isDa
-                    ? 'Liggende skærm, to cyanøjne og tydelige formskift. Følelser læses gennem øjne, hovedvinkel og bevægelse.'
-                    : 'Landscape screen, two cyan eyes, and clear shape shifts. Emotions are read through eyes, head angle, and motion.'}
+                    ? 'Liggende 3/4 skærm i børstet stål med runde øreled på siderne, rød top-sensor og to klare cyan pixeløjne.'
+                    : 'Landscape 3/4 brushed-steel monitor with circular side ear-hubs, red top sensor dome, and two crisp cyan pixel eyes.'}
                 </p>
               </div>
 
               <div className="p-4 rounded bg-[#0E162B] border border-slate-800">
                 <div className="text-xs font-mono text-[#00E5FF] mb-1">
-                  {isDa ? '02 / KONSTRUKTIONEN' : '02 / THE CONSTRUCTION'}
+                  {isDa ? '02 / GRIBEARME & LARVEBÅND' : '02 / C-CLAW ARMS & TREADS'}
                 </div>
                 <h4 className="text-sm font-bold text-white mb-1">
-                  {isDa ? 'Bygget med omtanke' : 'Built with Care'}
+                  {isDa ? 'Kugleled, C-gribere og 2-hjuls bånd' : 'Ball Joints, C-Claws & 2-Wheel Treads'}
                 </h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
                   {isDa
-                    ? 'Mørke metalpaneler, synligt halsled, korte gribearme og kompakte larvebånd. Færre små reflekser gør den lille figur klarere.'
-                    : 'Dark metal panels, visible neck joint, short claw arms, and compact tank treads. Fewer tiny reflections make the small figure clearer.'}
+                    ? 'Segmenterede arme med skulderkugleled og C-formede gribekløer over metalliske larvebånd med to synlige sidehjul.'
+                    : 'Segmented arms with spherical shoulder joints and C-shaped pincer claws atop metallic caterpillar treads with two visible road wheels.'}
                 </p>
               </div>
 
               <div className="p-4 rounded bg-[#0E162B] border border-slate-800">
                 <div className="text-xs font-mono text-[#FFD600] mb-1">
-                  {isDa ? '03 / SIGNATUREN' : '03 / THE SIGNATURE'}
+                  {isDa ? '03 / DET GULE PLUS & 3 LED-LYS' : '03 / YELLOW PLUS & 3 LED STACK'}
                 </div>
                 <h4 className="text-sm font-bold text-white mb-1">
-                  {isDa ? 'Det gule plus' : 'The Yellow Plus (+)'}
+                  {isDa ? 'Krydsknap (+) og Grøn/Gul/Rød panel' : 'Cross Button (+) & Green/Yellow/Red Stack'}
                 </h4>
                 <p className="text-xs text-slate-300 leading-relaxed">
                   {isDa
-                    ? 'Den store krydsknap og de kendte kontrollys bevares. Den grønne LED er et kendetegn og driftslys.'
-                    : 'The prominent yellow cross button and familiar control lights are preserved. The green LED is a hallmark and operating light.'}
+                    ? 'Den store gule krydsknap med vandret rille under til venstre, og det forsænkede panel med grøn, gul og rød LED til højre.'
+                    : 'The prominent yellow cross button with horizontal slot below on the left, paired with the recessed green, yellow, and red LED stack on the right.'}
                 </p>
               </div>
             </div>
@@ -568,27 +572,27 @@ export default function OLlamaDesignBookModal({
               <ul className="space-y-2.5 text-xs text-slate-300 leading-relaxed">
                 <li>
                   <strong className="text-white">
-                    {isDa ? 'Nysgerrig:' : 'Curious:'}
+                    {isDa ? 'Nysgerrig (01, 07–09):' : 'Curious (01, 07–09):'}
                   </strong>{' '}
                   {isDa
-                    ? 'Et nyt input mødes med et lille blik og en hovedhældning. Den åbne interesse forbliver figurens udgangspunkt.'
-                    : 'New input is met with a glance and head tilt. Open interest remains the character baseline.'}
+                    ? 'Et nyt input mødes med et lille blik til venstre, højre eller opad og en let hovedhældning.'
+                    : 'New input is met with a glance left, right, or upward and a gentle head tilt.'}
                 </li>
                 <li>
                   <strong className="text-white">
-                    {isDa ? 'Tålmodig:' : 'Patient:'}
+                    {isDa ? 'Tålmodig (02–04, 11):' : 'Patient (02–04, 11):'}
                   </strong>{' '}
                   {isDa
-                    ? 'Venten inviterer til hjælp. Lange arbejdsforløb får diskret aktivitet og et roligt tempo.'
-                    : 'Waiting invites collaboration. Long tasks receive discreet activity and a calm pace.'}
+                    ? 'Afventer input med åben C-griber, gennemgår med samlede gribere og arbejder med 3×3 cyanblokke.'
+                    : 'Awaits input with an open C-claw, reviews with gathered grippers, and processes with 3×3 cyan blocks.'}
                 </li>
                 <li>
                   <strong className="text-white">
-                    {isDa ? 'Åben for rettelser:' : 'Open to Correction:'}
+                    {isDa ? 'Åben for rettelser (06, 13):' : 'Open to Correction (06, 13):'}
                   </strong>{' '}
                   {isDa
-                    ? 'Et resultat kan undersøges igen. Røde øjne viser en blokering; de grønne kontrollys lover ikke fejlfrihed.'
-                    : 'Any result can be re-examined. Red eyes show a blockage; green lights do not promise infallibility.'}
+                    ? 'Røde målringe (06 Blokeret) viser en blokering, mens det grønne driftslys bliver ved med at lyse.'
+                    : 'Red target rings (06 Blocked) show a blockage while the green operating LED remains lit.'}
                 </li>
               </ul>
             </div>
@@ -602,7 +606,7 @@ export default function OLlamaDesignBookModal({
                 {isDa ? 'Stemninger til senere.' : 'Moods for the wider arc.'}
               </h4>
               <div className="space-y-2.5 text-xs text-slate-300">
-                {MOODS.map((m) => (
+                {MOODS.filter((m) => m.id !== 'studio').map((m) => (
                   <div key={m.id}>
                     <div className="font-bold text-[#FFD600]">
                       {isDa ? m.labelDa : m.labelEn}
@@ -627,18 +631,18 @@ export default function OLlamaDesignBookModal({
               </h4>
               <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
                 <p>
-                  <Check className="w-3.5 h-3.5 text-[#00C853] inline mr-1" />
+                  <Check className="w-3.5 h-3.5 text-[#00E676] inline mr-1" />
                   <strong>{isDa ? 'Færdigt:' : 'Completed:'}</strong>{' '}
                   {isDa
-                    ? 'Transparente konceptbilleder, otte udtryksstudier, tre 3. oktober kropssprogsstudier, designbog og kildekontrol.'
-                    : 'Transparent concept sprites, eight expression studies, three Oct 3 body-language poses, design book, and source verification.'}
+                    ? '14 o-Llama-Axiom karakterark (01–14), 9×8 transparent spritesheet, 3D WebGL-model og Production Bible v1.0.'
+                    : '14 o-Llama-Axiom character sheets (01–14), 9×8 transparent spritesheet, 3D WebGL model, and Production Bible v1.0.'}
                 </p>
                 <p>
                   <Layers className="w-3.5 h-3.5 text-[#00E5FF] inline mr-1" />
                   <strong>{isDa ? 'Kilder:' : 'Sources:'}</strong>{' '}
                   {isDa
-                    ? 'Design Document v1.1/v2.0, Scene Specification Bible (The Token of Trust) og Scene Specification List.'
-                    : 'Design Document v1.1/v2.0, Scene Specification Bible (The Token of Trust), and Scene Specification List.'}
+                    ? 'o-Llama-Axiom-01..14.png, pet_6a9caa81-spritesheet.png & The Token of Trust v1.0.'
+                    : 'o-Llama-Axiom-01..14.png, pet_6a9caa81-spritesheet.png & The Token of Trust v1.0.'}
                 </p>
                 <p>
                   <Eye className="w-3.5 h-3.5 text-[#FFD600] inline mr-1" />

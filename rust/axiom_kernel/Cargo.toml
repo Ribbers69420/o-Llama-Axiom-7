@@ -1,0 +1,16 @@
+[package]
+name = "axiom_kernel"
+version = "2.4.0"
+edition = "2024"
+rust-version = "1.85.0"
+description = "o-Llama AXIOM-7 Offline Physics, 24fps Stepped Quantizer, 4-Pillar Truth Verification & ABI v2.4.0 Stable Kernel (Rust -> wasm32-unknown-unknown)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

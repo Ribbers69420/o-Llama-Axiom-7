@@ -1,4 +1,4 @@
-import type {Metadata} from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Chakra_Petch, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -20,25 +20,49 @@ const jetbrainsMono = JetBrains_Mono({
   variable: '--font-mono',
 });
 
+export const viewport: Viewport = {
+  themeColor: '#050510',
+  width: 'device-width',
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
   title: 'AXIOM-7: Guardian of Truth | PIXELVERSE-9',
-  description: 'Interactive 3D spatial action-adventure game set in PIXELVERSE-9 where AXIOM-7 purges misinformation across 6 canonical chapters using swappable Tank, Wizard, and Cosmic forms and a High-Thinking Truth Analyzer.',
+  description:
+    'Offline-compatible 3D spatial action-adventure game set in PIXELVERSE-9 with Rust/WASM physics & truth kernel, SQL relational engine, and D3.js telemetry studio.',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'AXIOM-7',
+  },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/apple-touch-icon.png',
+  },
   openGraph: {
     title: 'AXIOM-7: Guardian of Truth | PIXELVERSE-9',
-    description: 'Interactive 3D spatial action-adventure game set in PIXELVERSE-9 where AXIOM-7 purges misinformation across 6 canonical chapters using swappable Tank, Wizard, and Cosmic forms and a High-Thinking Truth Analyzer.',
+    description:
+      'Offline-compatible 3D spatial action-adventure game set in PIXELVERSE-9 with Rust/WASM physics & truth kernel, SQL relational engine, and D3.js telemetry studio.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'AXIOM-7: Guardian of Truth | PIXELVERSE-9',
-    description: 'Interactive 3D spatial action-adventure game set in PIXELVERSE-9 where AXIOM-7 purges misinformation across 6 canonical chapters using swappable Tank, Wizard, and Cosmic forms and a High-Thinking Truth Analyzer.',
+    description:
+      'Offline-compatible 3D spatial action-adventure game set in PIXELVERSE-9 with Rust/WASM physics & truth kernel, SQL relational engine, and D3.js telemetry studio.',
   },
 };
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${chakraPetch.variable} ${plusJakarta.variable} ${jetbrainsMono.variable}`}>
-      <body suppressHydrationWarning className="bg-[#050510] text-white antialiased overflow-hidden select-none">
+    <html
+      lang="en"
+      className={`${chakraPetch.variable} ${plusJakarta.variable} ${jetbrainsMono.variable}`}
+    >
+      <body
+        suppressHydrationWarning
+        className="bg-[#050510] text-white antialiased overflow-hidden select-none"
+      >
         {children}
       </body>
     </html>

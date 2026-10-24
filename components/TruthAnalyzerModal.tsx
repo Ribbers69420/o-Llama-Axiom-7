@@ -7,8 +7,18 @@ import {
   type PillarName,
   type TruthVerificationResult,
 } from '@/lib/game-rules';
+import { verifyClaimOfflineWithRustWasm } from '@/lib/rust-wasm-kernel';
+import { insertTelemetryLogRow } from '@/lib/sql-truth-engine';
 import { soundSynth } from '@/lib/audio-synth';
-import { CheckCircle2, AlertTriangle, Search, Sparkles, X, ShieldCheck } from 'lucide-react';
+import {
+  CheckCircle2,
+  AlertTriangle,
+  Search,
+  Sparkles,
+  X,
+  ShieldCheck,
+  Cpu,
+} from 'lucide-react';
 
 interface TruthAnalyzerModalProps {
   isOpen: boolean;
@@ -39,6 +49,7 @@ export default function TruthAnalyzerModal({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [result, setResult] = useState<TruthVerificationResult | null>(null);
+  const [offlineKernelMode, setOfflineKernelMode] = useState<boolean>(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -46,12 +57,70 @@ export default function TruthAnalyzerModal({
       typeof initialClaimIndex === 'number' && chapter.claims[initialClaimIndex]
         ? chapter.claims[initialClaimIndex].statement
         : chapter.claims[0]?.statement || '';
-    setClaimText(defaultClaim);
-    setErrorMsg(null);
-    setResult(null);
+    queueMicrotask(() => {
+      setClaimText(defaultClaim);
+      setErrorMsg(null);
+      setResult(null);
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setOfflineKernelMode(true);
+      }
+    });
   }, [isOpen, chapterIndex, initialClaimIndex, chapter]);
 
   if (!isOpen) return null;
+
+  const runOfflineRustWasmVerification = (trimmed: string): TruthVerificationResult => {
+    const wasmRes = verifyClaimOfflineWithRustWasm(trimmed);
+    const isTrue = wasmRes.verdict === 'TRUE';
+    const recExpr: ExpressionId = isTrue ? 'EX-06' : 'EX-05';
+
+    insertTelemetryLogRow({
+      chapter_id: chapter.chapterLabel,
+      chassis: 'tank',
+      expression_code: recExpr,
+      pulse_damage: 48,
+      wasm_confidence: wasmRes.confidence,
+      fps_quantized_ms: 41,
+      mode: 'OFFLINE_WASM',
+    });
+
+    return {
+      claim: trimmed,
+      verdict: isTrue ? 'TRUE' : 'FALSE',
+      confidence: wasmRes.confidence,
+      accuracyRating: isTrue ? 99.7 : 99.1,
+      recommendedExpression: recExpr,
+      summaryConclusion: wasmRes.reasoning,
+      engineSource: 'axiom-7-core-matrix',
+      pillars: {
+        FACTS: {
+          score: wasmRes.pillarBreakdown.FACTS,
+          note: isTrue
+            ? 'Verified against observable PIXELVERSE-9 empirical state.'
+            : 'Contradicts observable physical and system records.',
+        },
+        EVIDENCE: {
+          score: wasmRes.pillarBreakdown.EVIDENCE,
+          note: isTrue
+            ? 'Corroborated by Production Bible v1.0 & SQL truth_claims.'
+            : 'Lacks documented proof in archival logs.',
+        },
+        DATA: {
+          score: wasmRes.pillarBreakdown.DATA,
+          note: `Rust/WASM weighted score: ${wasmRes.confidence}% across 4 pillars.`,
+        },
+        REALITY: {
+          score: wasmRes.pillarBreakdown.REALITY,
+          note: wasmRes.correction,
+        },
+      },
+      thinkingSteps: [
+        `[RUST/WASM KERNEL] Executed verify_claim_confidence(${wasmRes.pillarBreakdown.FACTS}, ${wasmRes.pillarBreakdown.EVIDENCE}, ${wasmRes.pillarBreakdown.DATA}, ${wasmRes.pillarBreakdown.REALITY}) -> ${wasmRes.confidence}%`,
+        `[SQL ENGINE] Cross-referenced claim against offline table truth_claims (chapter=${chapter.chapterLabel}).`,
+        `[VERDICT] Stamped ${isTrue ? 'TRUE (EX-06 Happy)' : 'FALSE / ANOMALY (EX-05 Blocked)'} and logged to telemetry_logs.`,
+      ],
+    };
+  };
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,26 +134,57 @@ export default function TruthAnalyzerModal({
     setLoading(true);
     onSetExpression('EX-07'); // PROCESSING ░░
 
+    const isBrowserOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+    if (offlineKernelMode || isBrowserOffline) {
+      const verified = runOfflineRustWasmVerification(trimmed);
+      setResult(verified);
+      soundSynth.playTruthVerified(verified.verdict === 'TRUE');
+      onSetExpression(verified.recommendedExpression);
+      onVerifiedSuccess(verified);
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/truth-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ claim: trimmed, chapterIndex }),
       });
-      const data = await res.json();
       if (!res.ok) {
-        setErrorMsg(data.error || 'Verification engine failed.');
+        // Seamless offline fallback to Rust/WASM + SQL Truth Engine
+        const verified = runOfflineRustWasmVerification(trimmed);
+        setResult(verified);
+        soundSynth.playTruthVerified(verified.verdict === 'TRUE');
+        onSetExpression(verified.recommendedExpression);
+        onVerifiedSuccess(verified);
         setLoading(false);
         return;
       }
 
+      const data = await res.json();
       const verified = data as TruthVerificationResult;
+      insertTelemetryLogRow({
+        chapter_id: chapter.chapterLabel,
+        chassis: 'tank',
+        expression_code: verified.recommendedExpression,
+        pulse_damage: 52,
+        wasm_confidence: Math.round(verified.confidence),
+        fps_quantized_ms: 41,
+        mode: 'ONLINE_SYNC',
+      });
       setResult(verified);
       soundSynth.playTruthVerified(verified.verdict === 'TRUE');
       onSetExpression(verified.recommendedExpression);
       onVerifiedSuccess(verified);
     } catch {
-      setErrorMsg('Network anomaly while querying Truth Matrix.');
+      // Automatic offline fallback if network request fails
+      const verified = runOfflineRustWasmVerification(trimmed);
+      setResult(verified);
+      soundSynth.playTruthVerified(verified.verdict === 'TRUE');
+      onSetExpression(verified.recommendedExpression);
+      onVerifiedSuccess(verified);
     } finally {
       setLoading(false);
     }
@@ -107,18 +207,32 @@ export default function TruthAnalyzerModal({
                 Truth Analyzer Terminal · Four Pillars Matrix
               </h2>
               <p className="text-xs text-slate-300">
-                {chapter.chapterLabel}: {chapter.title} · High-Thinking Epistemological Engine
+                {chapter.chapterLabel}: {chapter.title} · Hybrid Cloud + Offline Rust/WASM SQL Engine
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close Truth Analyzer"
-            className="p-1.5 rounded bg-[#1A264A] hover:bg-[#243464] text-slate-200 transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setOfflineKernelMode((v) => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                offlineKernelMode
+                  ? 'bg-[#00E676]/20 border-[#00E676] text-[#00E676]'
+                  : 'bg-[#1A264A] border-slate-600 text-slate-300 hover:border-[#00E5FF]'
+              }`}
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              {offlineKernelMode ? 'RUST/WASM OFFLINE: ON' : 'HYBRID AUTO-OFFLINE'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close Truth Analyzer"
+              className="p-1.5 rounded bg-[#1A264A] hover:bg-[#243464] text-slate-200 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="p-5 space-y-4 max-h-[82vh] overflow-y-auto">
@@ -180,7 +294,7 @@ export default function TruthAnalyzerModal({
 
             <div className="flex items-center justify-between gap-4">
               <div className="text-xs text-slate-400 font-mono tabular-nums">
-                LUD LOGIC: 188/200 · TARGET ACCURACY: 99.7%
+                LUD LOGIC: 188/200 · TARGET ACCURACY: 99.7% · OFFLINE-READY
               </div>
               <div className="flex items-center gap-2.5">
                 <button

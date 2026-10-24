@@ -4,7 +4,7 @@
 import type { ExpressionId } from './game-rules.ts';
 
 export type AppLanguage = 'da' | 'en';
-export type EnvironmentMoodId = 'vaerksted' | 'arkiv' | 'kosmos';
+export type EnvironmentMoodId = 'vaerksted' | 'arkiv' | 'kosmos' | 'studio';
 export type SpriteScaleSize = 64 | 120 | 192 | 240;
 
 export type OLlamaAnimationId =
@@ -20,7 +20,8 @@ export type OLlamaAnimationId =
 
 export interface OLlamaAnimationSpec {
   id: OLlamaAnimationId;
-  rowIndex: number; // 0 to 8 in the 9-row x 8-col transparent spritesheet
+  rowIndex: number; // 0 to 8 in the 9-row x 8-col transparent spritesheet (pet_6a9caa81a898819184d4992db7e8b566-spritesheet.png)
+  frameCount: number; // Active frames in the uploaded spritesheet
   labelDa: string;
   labelEn: string;
   descDa: string;
@@ -33,107 +34,125 @@ export const OLLAMA_ANIMATIONS: OLlamaAnimationSpec[] = [
   {
     id: 'hvile',
     rowIndex: 0,
+    frameCount: 8,
     labelDa: 'Hvile',
     labelEn: 'Idle',
-    descDa: 'Den eksisterende figur og dens faktiske billeder. Rolig blinkerytme med fyldte cyanøjne.',
-    descEn: 'The baseline figure in calm resting rhythm with filled cyan eyes and natural blink.',
+    descDa: 'Den eksisterende figur og dens faktiske billeder. Rolig blinkerytme i 3/4-profil med fyldte cyanøjne.',
+    descEn: 'The baseline figure in calm 3/4 resting rhythm with filled cyan eyes and natural blink.',
     fps: 8,
     expressionId: 'EX-01',
   },
   {
     id: 'mod-hoejre',
     rowIndex: 1,
+    frameCount: 8,
     labelDa: 'Mod højre',
     labelEn: 'Move Right',
-    descDa: 'Kørsel mod højre på kompakte larvebånd med bevaret kontrolpanel og det gule plus.',
-    descEn: 'Driving right on compact tank treads while keeping the front control panel and yellow cross visible.',
+    descDa: 'Kørsel mod højre på kompakte larvebånd med to synlige sidehjul, kontrolpanel og det gule plus.',
+    descEn: 'Driving right on compact tank treads with two visible road wheels, control panel, and yellow cross.',
     fps: 12,
     expressionId: 'EX-01',
   },
   {
     id: 'mod-venstre',
     rowIndex: 2,
+    frameCount: 8,
     labelDa: 'Mod venstre',
     labelEn: 'Move Left',
-    descDa: 'Kørsel mod venstre med let fremadrettet blik og rullende larvebånd.',
-    descEn: 'Driving left with forward gaze and rolling 8-segment treads.',
+    descDa: 'Kørsel mod venstre med fremadrettet blik, gribearme og rullende metalliske larvebånd.',
+    descEn: 'Driving left with forward gaze, segmented claw arms, and rolling metallic treads.',
     fps: 12,
     expressionId: 'EX-01',
   },
   {
     id: 'hilsen',
     rowIndex: 3,
+    frameCount: 8,
     labelDa: 'Hilsen',
     labelEn: 'Greeting',
-    descDa: 'Rolig hilsen med løftet venstre griber og venlig hovedhældning.',
-    descEn: 'Friendly wave with raised left claw gripper and gentle head tilt.',
+    descDa: 'Rolig hilsen med løftet C-griber og venlig hovedhældning.',
+    descEn: 'Friendly wave with raised C-shaped claw gripper and gentle head tilt.',
     fps: 8,
     expressionId: 'EX-01',
   },
   {
     id: 'hop',
     rowIndex: 4,
+    frameCount: 8,
     labelDa: 'Hop',
     labelEn: 'Jump / Joy',
-    descDa: 'Glad bue i øjnene (^^) og et lille løft i chassis og begge gribere.',
-    descEn: 'Happy curved eyes (^^) with an upbeat bounce across the chassis and both grippers.',
+    descDa: 'Glad bue i øjnene (^^) og et lille løft i chassis og begge C-gribere.',
+    descEn: 'Happy curved eyes (^^) with an upbeat bounce across the chassis and both C-grippers.',
     fps: 12,
     expressionId: 'EX-06',
   },
   {
     id: 'fejl',
     rowIndex: 5,
+    frameCount: 8,
     labelDa: 'Fejl',
     labelEn: 'Blocked / Error',
-    descDa: 'Røde ringøjne viser en blokering og falder derefter roligt tilbage til cyan.',
-    descEn: 'Red target rings signal a blockage before settling calmly back to cyan.',
+    descDa: 'Røde målringe med kvadratisk kerne (◉◉) viser en blokering i 6 frames og falder derefter roligt tilbage til cyan.',
+    descEn: 'Red target rings with center dot (◉◉) signal a blockage for 6 frames before settling calmly back to cyan.',
     fps: 12,
     expressionId: 'EX-05',
   },
   {
     id: 'afventer',
     rowIndex: 6,
+    frameCount: 8,
     labelDa: 'Afventer',
-    labelEn: 'Awaiting Input',
-    descDa: 'Hule ringøjne, let løftet hoved og en inviterende griber, der venter tålmodigt.',
-    descEn: 'Hollow ring eyes, slightly raised head, and an inviting gripper waiting patiently.',
+    labelEn: 'Awaiting / Thinking',
+    descDa: 'Hule ringøjne (○○) og C-griberen løftet tænksomt mod hagen, mens den venter tålmodigt.',
+    descEn: 'Hollow ring eyes (○○) with C-gripper raised thoughtfully to the chin while waiting patiently.',
     fps: 8,
     expressionId: 'EX-02',
   },
   {
     id: 'arbejder',
     rowIndex: 7,
+    frameCount: 8,
     labelDa: 'Arbejder',
-    labelEn: 'Working',
-    descDa: 'To tydelige grupper af cyanblokke på skærmen og mini-laptop mellem griberne.',
-    descEn: 'Two crisp cyan pixel-block clusters on screen while typing on a mini-laptop.',
+    labelEn: 'Working (Laptop)',
+    descDa: 'To tydelige 3×3 grupper af cyanblokke (### ###) på skærmen og mørk mini-laptop mellem griberne.',
+    descEn: 'Two crisp 3×3 cyan pixel-block clusters on screen while typing on a dark mini-laptop.',
     fps: 12,
     expressionId: 'EX-07',
   },
   {
     id: 'gennemgaar',
     rowIndex: 8,
+    frameCount: 8,
     labelDa: 'Gennemgår',
-    labelEn: 'Reviewing',
-    descDa: 'Undersøgende gennemgang og glæde over verificeret resultat.',
-    descEn: 'Focused review culminating in verified completion.',
+    labelEn: 'Reviewing / Celebrate',
+    descDa: 'Gennemgang og glæde over verificeret resultat med løftede gribearme og glade øjenbuer (^^).',
+    descEn: 'Review culminating in verified joy with raised claw arms and happy eye arcs (^^).',
     fps: 8,
-    expressionId: 'EX-02',
+    expressionId: 'EX-06',
   },
 ];
 
+// All 14 Canonical Poses from the uploaded o-Llama-Axiom-01..14 image set
 export type OLlamaStudyId =
-  | 'nysgerrig'
-  | 'undersoeger'
-  | 'arbejder'
-  | 'afventer-dig'
-  | 'gennemgaar'
-  | 'lille-glaede'
-  | 'blokeret'
-  | 'stille';
+  | 'nysgerrig'          // 01: o-Llama-Axiom-01-Nysgerrig.png
+  | 'afventer-dig'       // 02: o-Llama-Axiom-02-Afventer-input.png
+  | 'gennemgaar'         // 03: o-Llama-Axiom-03-Gennemgaar.png
+  | 'arbejder'           // 04: o-Llama-Axiom-04-Arbejder.png
+  | 'lille-glaede'       // 05: o-Llama-Axiom-05-Lille-glaede.png
+  | 'blokeret'           // 06: o-Llama-Axiom-06-Blokeret.png
+  | 'blik-venstre'       // 07: o-Llama-Axiom-07-Blik-venstre.png
+  | 'blik-hoejre'        // 08: o-Llama-Axiom-08-Blik-hoejre.png
+  | 'blik-opad'          // 09: o-Llama-Axiom-09-Blik-opad.png
+  | 'blink'              // 10: o-Llama-Axiom-10-Blink.png
+  | 'stille'             // 11: o-Llama-Axiom-11-Stille-vaagen.png
+  | 'hilsen'             // 12: o-Llama-Axiom-12-Hilsen.png
+  | 'undersoeger'        // 13: o-Llama-Axiom-13-Undersoeger.png
+  | 'afdaempet-glaede';  // 14: o-Llama-Axiom-14-Afdaempet-glaede.png
 
 export interface OLlamaExpressionStudy {
   id: OLlamaStudyId;
+  num: string;
+  fileName: string;
   expressionCode: ExpressionId;
   labelDa: string;
   labelEn: string;
@@ -142,114 +161,220 @@ export interface OLlamaExpressionStudy {
   descDa: string;
   descEn: string;
   headTiltDeg: number;
-  leftGripperPose: 'neutral' | 'open-invite' | 'tucked' | 'wave' | 'laptop';
-  rightGripperPose: 'neutral' | 'open-invite' | 'tucked' | 'chin' | 'laptop';
+  leftGripperPose: 'chest' | 'side' | 'tucked' | 'chin' | 'rest';
+  rightGripperPose: 'side' | 'open-invite' | 'tucked' | 'wave' | 'wave-high' | 'rest';
 }
 
 export const OLLAMA_EXPRESSION_STUDIES: OLlamaExpressionStudy[] = [
   {
     id: 'nysgerrig',
+    num: '01',
+    fileName: 'o-Llama-Axiom-01-Nysgerrig.png',
     expressionCode: 'EX-01',
-    labelDa: 'Nysgerrig',
-    labelEn: 'Curious',
+    labelDa: '01 · Nysgerrig',
+    labelEn: '01 · Curious',
     subLabelDa: 'Fyldte cirkler ●●',
     subLabelEn: 'Filled circles ●●',
-    descDa: 'To fyldte cyanøjne og en lille hovedhældning. Klar til at møde noget nyt.',
-    descEn: 'Two filled cyan eyes and a slight head tilt. Ready to meet something new.',
-    headTiltDeg: -5,
-    leftGripperPose: 'neutral',
-    rightGripperPose: 'neutral',
-  },
-  {
-    id: 'undersoeger',
-    expressionCode: 'EX-02',
-    labelDa: 'Undersøger',
-    labelEn: 'Investigating',
-    subLabelDa: 'Hule ringe ○○',
-    subLabelEn: 'Hollow rings ○○',
-    descDa: 'Hule cyanringe fokuserer roligt på opgaven og krydstjekker kilder.',
-    descEn: 'Hollow cyan rings focus calmly on the task and cross-check sources.',
-    headTiltDeg: 0,
-    leftGripperPose: 'neutral',
-    rightGripperPose: 'chin',
-  },
-  {
-    id: 'arbejder',
-    expressionCode: 'EX-07',
-    labelDa: 'Arbejder',
-    labelEn: 'Working',
-    subLabelDa: 'Cyanblokke ░░',
-    subLabelEn: 'Cyan blocks ░░',
-    descDa: 'To tydelige grupper af cyanblokke og en stabil grundstilling. Aktiviteten bæres af skærmen.',
-    descEn: 'Two distinct groups of cyan pixel blocks and a stable stance. Activity is carried by the screen.',
-    headTiltDeg: 0,
-    leftGripperPose: 'laptop',
-    rightGripperPose: 'laptop',
+    descDa: 'To fyldte cyanøjne, en lille hovedhældning og venstre C-griber løftet nysgerrigt mod brystets gule plus (+).',
+    descEn: 'Two filled cyan eyes, a slight head tilt, and the left C-gripper raised curiously toward the yellow plus (+).',
+    headTiltDeg: -4,
+    leftGripperPose: 'chest',
+    rightGripperPose: 'side',
   },
   {
     id: 'afventer-dig',
+    num: '02',
+    fileName: 'o-Llama-Axiom-02-Afventer-input.png',
     expressionCode: 'EX-02',
-    labelDa: 'Afventer dig',
-    labelEn: 'Awaiting You',
-    subLabelDa: 'Ringøjne + åben griber',
-    subLabelEn: 'Ring eyes + open gripper',
-    descDa: 'Ringøjne og en åben griber mod dig. Hovedet holdes let oppe; posituren inviterer roligt til input.',
-    descEn: 'Ring eyes and an open gripper toward you. Head held slightly up; posture calmly invites input.',
-    headTiltDeg: 6,
-    leftGripperPose: 'open-invite',
-    rightGripperPose: 'neutral',
-  },
-  {
-    id: 'gennemgaar',
-    expressionCode: 'EX-02',
-    labelDa: 'Gennemgår',
-    labelEn: 'Reviewing',
-    subLabelDa: 'Ringøjne + sænket hoved',
-    subLabelEn: 'Ring eyes + lowered head',
-    descDa: 'Ringøjne, sænket hoved og begge gribere tæt ved kroppen. Opmærksomheden samles om arbejdet.',
-    descEn: 'Ring eyes, lowered head, and both grippers tucked close to the body. Attention gathered on the work.',
-    headTiltDeg: -8,
-    leftGripperPose: 'tucked',
-    rightGripperPose: 'tucked',
-  },
-  {
-    id: 'lille-glaede',
-    expressionCode: 'EX-06',
-    labelDa: 'Lille glæde',
-    labelEn: 'Small Joy',
-    subLabelDa: 'Glad bue ^^',
-    subLabelEn: 'Happy arc ^^',
-    descDa: 'En glad bue viser et lille øjeblik af succes og verificeret sandhed.',
-    descEn: 'A happy arc shows a quiet moment of success and verified truth.',
+    labelDa: '02 · Afventer input',
+    labelEn: '02 · Awaiting Input',
+    subLabelDa: 'Ringøjne ○○ + åben griber',
+    subLabelEn: 'Ring eyes ○○ + open gripper',
+    descDa: 'Hule cyan-ringøjne og en åben C-griber rakt frem mod dig. Hovedet holdes let oppe og inviterer roligt til input.',
+    descEn: 'Hollow cyan ring eyes and an open C-gripper extended toward you. Head held slightly up, calmly inviting input.',
     headTiltDeg: 4,
-    leftGripperPose: 'wave',
+    leftGripperPose: 'side',
     rightGripperPose: 'open-invite',
   },
   {
-    id: 'blokeret',
-    expressionCode: 'EX-05',
-    labelDa: 'Blokeret',
-    labelEn: 'Blocked',
-    subLabelDa: 'Røde målringe ◉◉',
-    subLabelEn: 'Red target rings ◉◉',
-    descDa: 'Røde øjne viser en blokering; de grønne kontrollys lover ikke fejlfrihed, men åbenhed for rettelse.',
-    descEn: 'Red eyes signal a blockage; the green LED does not promise infallibility, but openness to correction.',
-    headTiltDeg: -4,
+    id: 'gennemgaar',
+    num: '03',
+    fileName: 'o-Llama-Axiom-03-Gennemgaar.png',
+    expressionCode: 'EX-02',
+    labelDa: '03 · Gennemgår',
+    labelEn: '03 · Reviewing',
+    subLabelDa: 'Ringøjne ○○ + samlede gribere',
+    subLabelEn: 'Ring eyes ○○ + gathered grippers',
+    descDa: 'Ringøjne, let sænket hoved og begge C-gribere samlet tæt foran kroppen. Opmærksomheden samles om arbejdet.',
+    descEn: 'Ring eyes, lowered head, and both C-grippers gathered closely in front of the torso. Attention focused on the work.',
+    headTiltDeg: -6,
     leftGripperPose: 'tucked',
     rightGripperPose: 'tucked',
   },
   {
-    id: 'stille',
-    expressionCode: 'EX-08',
-    labelDa: 'Stille · vågen',
-    labelEn: 'Quiet · Awake',
-    subLabelDa: 'Cyanlinjer --',
-    subLabelEn: 'Cyan lines --',
-    descDa: 'Cyanlinjerne i "Stille" betyder vågen ro. Den mørke EX-08-sovetilstand bevares i kilden.',
-    descEn: 'The cyan lines in "Quiet" mean awake calm. The dark EX-08 sleep state is preserved in the source.',
+    id: 'arbejder',
+    num: '04',
+    fileName: 'o-Llama-Axiom-04-Arbejder.png',
+    expressionCode: 'EX-07',
+    labelDa: '04 · Arbejder',
+    labelEn: '04 · Working',
+    subLabelDa: '3×3 Cyanblokke ### ###',
+    subLabelEn: '3×3 Cyan blocks ### ###',
+    descDa: 'To tydelige 3×3 grupper af cyanblokke på skærmen og en stabil arbejdsstilling med griberne hvilende foran.',
+    descEn: 'Two distinct 3×3 grids of cyan pixel blocks on screen and a steady working stance with grippers poised in front.',
     headTiltDeg: 0,
-    leftGripperPose: 'neutral',
-    rightGripperPose: 'neutral',
+    leftGripperPose: 'rest',
+    rightGripperPose: 'rest',
+  },
+  {
+    id: 'lille-glaede',
+    num: '05',
+    fileName: 'o-Llama-Axiom-05-Lille-glaede.png',
+    expressionCode: 'EX-06',
+    labelDa: '05 · Lille glæde',
+    labelEn: '05 · Small Joy',
+    subLabelDa: 'Glade øjenbuer ^^ + vink',
+    subLabelEn: 'Happy arcs ^^ + wave',
+    descDa: 'Glade cyanbuer i øjnene og højre C-griber løftet i en varm, venlig markering af succes.',
+    descEn: 'Happy cyan eye arcs and the right C-gripper raised in a warm, friendly gesture of success.',
+    headTiltDeg: 4,
+    leftGripperPose: 'side',
+    rightGripperPose: 'wave',
+  },
+  {
+    id: 'blokeret',
+    num: '06',
+    fileName: 'o-Llama-Axiom-06-Blokeret.png',
+    expressionCode: 'EX-05',
+    labelDa: '06 · Blokeret',
+    labelEn: '06 · Blocked',
+    subLabelDa: 'Røde målringe ◉◉',
+    subLabelEn: 'Red target rings ◉◉',
+    descDa: 'Røde pixel-ringe med kvadratisk midterpunkt viser en blokering, mens det grønne driftslys på brystet forbliver tændt.',
+    descEn: 'Red pixel rings with a center square signal a blockage while the green chest operating LED stays lit.',
+    headTiltDeg: 0,
+    leftGripperPose: 'side',
+    rightGripperPose: 'side',
+  },
+  {
+    id: 'blik-venstre',
+    num: '07',
+    fileName: 'o-Llama-Axiom-07-Blik-venstre.png',
+    expressionCode: 'EX-01',
+    labelDa: '07 · Blik venstre',
+    labelEn: '07 · Glance Left',
+    subLabelDa: 'Øjne mod venstre ●●',
+    subLabelEn: 'Eyes glancing left ●●',
+    descDa: 'Hovedet og de fyldte cyanøjne orienterer sig opmærksomt mod venstre med synligt højre øreled.',
+    descEn: 'The head and filled cyan eyes turn attentively toward the left with the right side ear-hub visible.',
+    headTiltDeg: -2,
+    leftGripperPose: 'side',
+    rightGripperPose: 'side',
+  },
+  {
+    id: 'blik-hoejre',
+    num: '08',
+    fileName: 'o-Llama-Axiom-08-Blik-hoejre.png',
+    expressionCode: 'EX-01',
+    labelDa: '08 · Blik højre',
+    labelEn: '08 · Glance Right',
+    subLabelDa: 'Øjne mod højre ●●',
+    subLabelEn: 'Eyes glancing right ●●',
+    descDa: 'Fyldte cyanøjne følger opmærksomt noget til højre i 3/4-profil.',
+    descEn: 'Filled cyan eyes attentively track something to the right in 3/4 profile.',
+    headTiltDeg: 2,
+    leftGripperPose: 'side',
+    rightGripperPose: 'side',
+  },
+  {
+    id: 'blik-opad',
+    num: '09',
+    fileName: 'o-Llama-Axiom-09-Blik-opad.png',
+    expressionCode: 'EX-01',
+    labelDa: '09 · Blik opad',
+    labelEn: '09 · Glance Upward',
+    subLabelDa: 'Øjne løftet opad ●●',
+    subLabelEn: 'Eyes looking up ●●',
+    descDa: 'Skærmen vippes let bagud, og de fyldte cyanøjne ser nysgerrigt op mod brugeren.',
+    descEn: 'The monitor tilts slightly back as the filled cyan eyes look curiously up toward the user.',
+    headTiltDeg: 6,
+    leftGripperPose: 'side',
+    rightGripperPose: 'side',
+  },
+  {
+    id: 'blink',
+    num: '10',
+    fileName: 'o-Llama-Axiom-10-Blink.png',
+    expressionCode: 'EX-08',
+    labelDa: '10 · Blink',
+    labelEn: '10 · Blink',
+    subLabelDa: 'Smalle cyanlinjer — —',
+    subLabelEn: 'Thin cyan blink lines — —',
+    descDa: 'Et naturligt, roligt blink med smalle vandrette cyanstreger midt på skærmen.',
+    descEn: 'A natural, calm blink rendered as thin horizontal cyan lines across the screen.',
+    headTiltDeg: 0,
+    leftGripperPose: 'side',
+    rightGripperPose: 'side',
+  },
+  {
+    id: 'stille',
+    num: '11',
+    fileName: 'o-Llama-Axiom-11-Stille-vaagen.png',
+    expressionCode: 'EX-08',
+    labelDa: '11 · Stille · vågen',
+    labelEn: '11 · Quiet · Awake',
+    subLabelDa: 'Brede cyanbjælker ▬ ▬',
+    subLabelEn: 'Wide cyan bars ▬ ▬',
+    descDa: 'Bløde, brede cyanbjælker og begge gribere hvilende roligt på larvebåndene — vågen ro uden støj.',
+    descEn: 'Soft, wide cyan bars with both grippers resting calmly atop the treads — awake tranquility.',
+    headTiltDeg: 0,
+    leftGripperPose: 'rest',
+    rightGripperPose: 'rest',
+  },
+  {
+    id: 'hilsen',
+    num: '12',
+    fileName: 'o-Llama-Axiom-12-Hilsen.png',
+    expressionCode: 'EX-01',
+    labelDa: '12 · Hilsen',
+    labelEn: '12 · Greeting',
+    subLabelDa: 'Fyldte øjne ●● + højt vink',
+    subLabelEn: 'Filled eyes ●● + high wave',
+    descDa: 'Klare fyldte cyanøjne og højre griber løftet højt i en åben og imødekommende hilsen.',
+    descEn: 'Bright filled cyan eyes and the right claw raised high in an open, welcoming greeting.',
+    headTiltDeg: 3,
+    leftGripperPose: 'side',
+    rightGripperPose: 'wave-high',
+  },
+  {
+    id: 'undersoeger',
+    num: '13',
+    fileName: 'o-Llama-Axiom-13-Undersoeger.png',
+    expressionCode: 'EX-02',
+    labelDa: '13 · Undersøger',
+    labelEn: '13 · Investigating',
+    subLabelDa: 'Hule ringe ○○ + hånd ved hage',
+    subLabelEn: 'Hollow rings ○○ + hand to chin',
+    descDa: 'Analytiske hule cyanringe med venstre C-griber løftet tænksomt op til skærmens underkant.',
+    descEn: 'Analytical hollow cyan rings with the left C-gripper raised thoughtfully to the lower bezel.',
+    headTiltDeg: -3,
+    leftGripperPose: 'chin',
+    rightGripperPose: 'rest',
+  },
+  {
+    id: 'afdaempet-glaede',
+    num: '14',
+    fileName: 'o-Llama-Axiom-14-Afdaempet-glaede.png',
+    expressionCode: 'EX-06',
+    labelDa: '14 · Afdæmpet glæde',
+    labelEn: '14 · Gentle Joy',
+    subLabelDa: 'Glade buer ^^ + hvilende gribere',
+    subLabelEn: 'Happy arcs ^^ + resting grippers',
+    descDa: 'Glade cyanbuer i øjnene kombineret med roligt hvilende gribere foran brystet — stille tilfredshed.',
+    descEn: 'Happy cyan eye arcs paired with calmly resting grippers in front of the chest — quiet satisfaction.',
+    headTiltDeg: 2,
+    leftGripperPose: 'rest',
+    rightGripperPose: 'rest',
   },
 ];
 
@@ -262,14 +387,14 @@ export interface NominalColorToken {
 }
 
 export const NOMINAL_COLORS: NominalColorToken[] = [
-  { nameDa: 'Chassis', nameEn: 'Chassis', hex: '#2D2D2D', roleDa: 'Hovedkroppens mørke metal', roleEn: 'Main body dark metal' },
-  { nameDa: 'Paneler', nameEn: 'Panels', hex: '#3D3D3D', roleDa: 'Sekundære paneler og led', roleEn: 'Secondary panels & joints' },
-  { nameDa: 'Skærm', nameEn: 'Screen', hex: '#0A0A0A', roleDa: 'Ansigtsskærmens dybe sort', roleEn: 'Face screen deep black' },
-  { nameDa: 'Cyan', nameEn: 'Cyan', hex: '#00E5FF', roleDa: 'Primære øjne og lys', roleEn: 'Primary eyes & highlights' },
-  { nameDa: 'Arbejder', nameEn: 'Working', hex: '#00BCD4', roleDa: 'Aktivitet og glød', roleEn: 'Activity & eye glow' },
-  { nameDa: 'Plus', nameEn: 'Plus (+)', hex: '#FFD600', roleDa: 'Den store gule krydsknap', roleEn: 'Signature yellow cross button' },
-  { nameDa: 'LED', nameEn: 'LED', hex: '#00C853', roleDa: 'Grønt driftslys og kendetegn', roleEn: 'Green operating status LED' },
-  { nameDa: 'Fejl', nameEn: 'Error', hex: '#FF1744', roleDa: 'Blokering og kontrolknap', roleEn: 'Blockage & red control indicator' },
+  { nameDa: 'Chassis', nameEn: 'Chassis', hex: '#455A64', roleDa: 'Hovedkroppens børstede stål', roleEn: 'Main body brushed steel' },
+  { nameDa: 'Paneler', nameEn: 'Panels', hex: '#78909C', roleDa: ' metalliske kanter, øreled og bånd', roleEn: 'Metallic bevels, ear hubs & treads' },
+  { nameDa: 'Skærm', nameEn: 'Screen', hex: '#05070A', roleDa: 'Ansigtsskærmens dybe sort', roleEn: 'Face screen deep pitch-black' },
+  { nameDa: 'Cyan', nameEn: 'Cyan', hex: '#00F0FF', roleDa: 'Primære pixeløjne og lys', roleEn: 'Primary pixel eyes & glow' },
+  { nameDa: 'Arbejder', nameEn: 'Working', hex: '#00BCD4', roleDa: '3×3 blok-aktivitet', roleEn: '3×3 matrix activity' },
+  { nameDa: 'Plus', nameEn: 'Plus (+)', hex: '#FFD600', roleDa: 'Den store gule krydsknap & midter-LED', roleEn: 'Signature yellow cross & middle LED' },
+  { nameDa: 'LED', nameEn: 'LED', hex: '#00E676', roleDa: 'Øverste grønne driftslys', roleEn: 'Top green operating LED' },
+  { nameDa: 'Fejl', nameEn: 'Error', hex: '#FF1744', roleDa: 'Top-sensor, bund-LED & målringe', roleEn: 'Top sensor dome, bottom LED & target rings' },
 ];
 
 // Production Bible v1.0 — 7 Episodes / 10 Canonical Scenes (including 1854-coda)

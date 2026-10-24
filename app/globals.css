@@ -1,1 +1,58 @@
 @import "tailwindcss";
+
+/* ============================================================================
+   o-Llama · AXIOM-7 Optimized CSS Architecture (GPU Compositing & Pixel Art)
+   ============================================================================ */
+
+@layer utilities {
+  .pixel-crisp {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  .gpu-accelerated {
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.3));
+  }
+
+  .hud-contain {
+    contain: layout style;
+  }
+
+  .crt-scanlines {
+    background-image: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0) 50%,
+      rgba(0, 240, 255, 0.04) 50%
+    );
+    background-size: 100% 4px;
+  }
+
+  .axiom-grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(0, 240, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0, 240, 255, 0.06) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+}
+
+@keyframes axiomPulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(0, 240, 255, 0.45);
+  }
+}
+
+.axiom-pulse-border {
+  animation: axiomPulseGlow 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .axiom-pulse-border {
+    animation: none;
+  }
+}
