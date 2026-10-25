@@ -55,8 +55,8 @@ export interface SystemUpdateReport {
   summaryEn: string;
 }
 
-export const AXIOM_RELEASE_VERSION = 'v2.4.0-stable';
-export const AXIOM_KERNEL_EXPECTED_ABI = 20400;
+export const AXIOM_RELEASE_VERSION = 'v2.6.0-stable';
+export const AXIOM_KERNEL_EXPECTED_ABI = 20600;
 
 let lastUpdateReport: SystemUpdateReport | null = null;
 

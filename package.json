@@ -1,13 +1,16 @@
 {
   "name": "ai-studio-applet",
-  "version": "2.4.0",
+  "version": "2.6.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "clean": "next clean"
+    "clean": "next clean",
+    "stage:assets": "node scripts/stage-assets.mjs",
+    "test": "npx --yes tsx --test lib/game-rules.test.ts",
+    "dist:exe": "node scripts/build-dist-exe.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

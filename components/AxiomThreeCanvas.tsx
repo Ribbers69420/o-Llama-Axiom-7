@@ -32,6 +32,13 @@ export interface ActiveGameplaySnapshot {
   targetPurges: number;
   pillarsUnlocked: PillarName[];
   nearbyTomeClaimIndex: number | null;
+  playerX?: number;
+  playerZ?: number;
+  playerAngle?: number;
+  isDashing?: boolean;
+  dashCooldownTimer?: number;
+  tomes?: Array<{ id: string; x: number; z: number; collected: boolean; pillar: PillarName }>;
+  enemies?: Array<{ id: string; x: number; z: number; hp: number; archetype: EnemyArchetype }>;
 }
 
 interface AxiomThreeCanvasProps {
@@ -704,6 +711,17 @@ export default function AxiomThreeCanvas({
     const camera = new THREE.PerspectiveCamera(48, width / height, 0.1, 220);
     camera.position.set(0, 8.5, 13.5);
     camera.lookAt(0, 1.8, 0);
+
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __axiomTakeScreenshot?: () => string | null }).__axiomTakeScreenshot = () => {
+        try {
+          renderer.render(scene, camera);
+          return renderer.domElement.toDataURL('image/png');
+        } catch {
+          return null;
+        }
+      };
+    }
 
     // 3-Point Studio Rig with Warm Key + Cool Hemisphere Fill
     const hemiLight = new THREE.HemisphereLight('#FFD6A0', '#6B4423', 0.85);
@@ -2532,6 +2550,25 @@ export default function AxiomThreeCanvas({
               targetPurges: cScene.targetPurges,
               pillarsUnlocked: simState.pillarsUnlocked,
               nearbyTomeClaimIndex: closestTomeClaim,
+              playerX: simState.playerX,
+              playerZ: simState.playerZ,
+              playerAngle: simState.playerRotY,
+              isDashing: simState.dashCooldownTimer > 0.6,
+              dashCooldownTimer: simState.dashCooldownTimer,
+              tomes: activeTomes.map((t) => ({
+                id: t.id,
+                x: t.x,
+                z: t.z,
+                collected: t.collected,
+                pillar: t.pillar,
+              })),
+              enemies: activeEnemies.map((e) => ({
+                id: e.data.id,
+                x: e.data.x,
+                z: e.data.z,
+                hp: e.data.hp,
+                archetype: e.data.archetype,
+              })),
             });
             soundSynth.playTruthVerified(true);
             currentProps.onChapterComplete();
@@ -2551,6 +2588,25 @@ export default function AxiomThreeCanvas({
               targetPurges: cScene.targetPurges,
               pillarsUnlocked: simState.pillarsUnlocked,
               nearbyTomeClaimIndex: closestTomeClaim,
+              playerX: simState.playerX,
+              playerZ: simState.playerZ,
+              playerAngle: simState.playerRotY,
+              isDashing: simState.dashCooldownTimer > 0.6,
+              dashCooldownTimer: simState.dashCooldownTimer,
+              tomes: activeTomes.map((t) => ({
+                id: t.id,
+                x: t.x,
+                z: t.z,
+                collected: t.collected,
+                pillar: t.pillar,
+              })),
+              enemies: activeEnemies.map((e) => ({
+                id: e.data.id,
+                x: e.data.x,
+                z: e.data.z,
+                hp: e.data.hp,
+                archetype: e.data.archetype,
+              })),
             });
           }
 

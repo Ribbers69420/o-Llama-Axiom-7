@@ -287,10 +287,10 @@ export function buildAxiomWasmBinary(): Uint8Array {
     0x0b,
   ];
 
-  // Function 4 body: get_kernel_abi_version() -> 20400 (v2.4.0-stable)
+  // Function 4 body: get_kernel_abi_version() -> 20600 (v2.6.0-stable)
   const func4Instr = [
     0x00,
-    0x41, ...sleb128(20400),
+    0x41, ...sleb128(20600),
     0x0b,
   ];
 

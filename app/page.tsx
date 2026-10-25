@@ -7,6 +7,9 @@ import MasterCodexModal from '@/components/MasterCodexModal';
 import OLlamaDesignBookModal from '@/components/OLlamaDesignBookModal';
 import RustSqlD3Modal from '@/components/RustSqlD3Modal';
 import PWAOfflineStatusBar from '@/components/PWAOfflineStatusBar';
+import AxiomResearchCommandModal from '@/components/AxiomResearchCommandModal';
+import AxiomTacticalRadar from '@/components/AxiomTacticalRadar';
+import OLlamaPixelCanvas from '@/components/OLlamaPixelCanvas';
 import {
   CHAPTER_SCENES,
   CHASSIS_SPECS,
@@ -23,8 +26,10 @@ import { saveDataToEccSlot } from '@/lib/ecc-storage-vault';
 import { soundSynth } from '@/lib/audio-synth';
 import {
   BookOpen,
+  Camera,
   ChevronDown,
   ChevronUp,
+  Command,
   Compass,
   Cpu,
   Globe,
@@ -32,6 +37,7 @@ import {
   Play,
   RotateCcw,
   ShieldCheck,
+  Smile,
   Sparkles,
   Volume2,
   VolumeX,
@@ -51,6 +57,8 @@ export default function AxiomGameShellPage() {
   const [codexOpen, setCodexOpen] = useState<boolean>(false);
   const [designBookOpen, setDesignBookOpen] = useState<boolean>(false);
   const [rustSqlD3Open, setRustSqlD3Open] = useState<boolean>(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState<boolean>(false);
+  const [petOverlayOpen, setPetOverlayOpen] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(false);
 
   const [pulseTriggerCount, setPulseTriggerCount] = useState<number>(0);
@@ -129,12 +137,30 @@ export default function AxiomGameShellPage() {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
+      // Global Windows 11 & Command Palette Shortcuts
+      if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyK' || (e.shiftKey && e.code === 'KeyA'))) {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyV') {
+        e.preventDefault();
+        setTerminalOpen(true);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyO') {
+        e.preventDefault();
+        setPetOverlayOpen((prev) => !prev);
+        return;
+      }
+
       if (
         status === 'title' &&
         !terminalOpen &&
         !codexOpen &&
         !designBookOpen &&
-        !rustSqlD3Open
+        !rustSqlD3Open &&
+        !commandPaletteOpen
       ) {
         if (e.code === 'Enter' || e.code === 'Space') {
           e.preventDefault();
@@ -165,6 +191,10 @@ export default function AxiomGameShellPage() {
         e.preventDefault();
         handleToggleMute();
       } else if (e.code === 'Escape' || e.code === 'KeyP') {
+        if (commandPaletteOpen) {
+          setCommandPaletteOpen(false);
+          return;
+        }
         if (terminalOpen) {
           setTerminalOpen(false);
           return;
@@ -195,6 +225,7 @@ export default function AxiomGameShellPage() {
     codexOpen,
     designBookOpen,
     rustSqlD3Open,
+    commandPaletteOpen,
     handleStartGame,
     handleSelectChassis,
     handleToggleMute,
@@ -202,6 +233,22 @@ export default function AxiomGameShellPage() {
 
   const currentChapter = CHAPTER_SCENES[chapterIndex] || CHAPTER_SCENES[0];
   const currentExprSpec = EXPRESSIONS[expression] || EXPRESSIONS['EX-01'];
+
+  const handleTake3DScreenshot = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      const fn = (window as unknown as { __axiomTakeScreenshot?: () => string | null }).__axiomTakeScreenshot;
+      if (fn) {
+        const dataUrl = fn();
+        if (dataUrl) {
+          const a = document.createElement('a');
+          a.href = dataUrl;
+          a.download = `AXIOM7-3D-Screenshot-${currentChapter.chapterLabel}-${Date.now()}.png`;
+          a.click();
+          soundSynth.playTruthVerified(true);
+        }
+      }
+    }
+  }, [currentChapter.chapterLabel]);
 
   const handleUpdateSnapshot = useCallback((snap: ActiveGameplaySnapshot) => {
     setSnapshot(snap);
@@ -384,6 +431,16 @@ export default function AxiomGameShellPage() {
                   <Cpu className="w-3.5 h-3.5" />
                   <span>{isDa ? 'Rust · SQL · D3 [R]' : 'Rust · SQL · D3 [R]'}</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCommandPaletteOpen(true)}
+                  data-testid="open-command-palette-btn"
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded font-semibold text-xs uppercase tracking-wider bg-[#1D1438] hover:bg-[#2C1D54] text-[#E040FB] border border-[#E040FB]/60 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Command className="w-3.5 h-3.5" />
+                  <span>{isDa ? 'Palet [Ctrl+K]' : 'Command [Ctrl+K]'}</span>
+                </button>
               </div>
 
               {/* Chapter Quick-Selector */}
@@ -468,75 +525,89 @@ export default function AxiomGameShellPage() {
         <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-4 sm:p-5">
           {/* Top Row: Top-Left Vitality/Score Cluster & Top-Right Utility/Chapter Cluster */}
           <div className="flex items-start justify-between gap-4">
-            {/* Top-Left Cluster: Vitality Pips, Expression State, Score & Accuracy */}
-            <div className="bg-[rgba(10,12,24,0.88)] border-2 border-[#00E5FF] rounded-lg px-4 py-3 shadow-lg pointer-events-auto flex flex-wrap items-center gap-5">
-              {/* Discrete 5 Vitality Sockets */}
-              <div>
-                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">
-                  {isDa ? 'INTEGRITET (HP)' : 'CORE INTEGRITY (HP)'}
-                </div>
-                <div
-                  className="flex items-center gap-1.5"
-                  aria-label={`Health ${snapshot.hp} of ${snapshot.maxHp}`}
-                >
-                  {Array.from({ length: snapshot.maxHp }).map((_, i) => {
-                    const isFull = i < snapshot.hp;
-                    return (
-                      <svg
-                        key={i}
-                        viewBox="0 0 24 24"
-                        className="w-5 h-5"
-                        aria-hidden="true"
-                      >
-                        <rect
-                          x="3"
-                          y="3"
-                          width="18"
-                          height="18"
-                          rx="4"
-                          fill={isFull ? '#00E5FF' : '#12182B'}
-                          stroke={isFull ? '#FFFFFF' : '#3B486B'}
-                          strokeWidth="2"
-                        />
-                        {isFull && (
-                          <rect x="7" y="6" width="6" height="3" rx="1" fill="#FFFFFF" />
-                        )}
-                      </svg>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Active Expression State Readout */}
-              <div className="border-l border-slate-700 pl-4">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
-                  {isDa ? 'UDTRYK' : 'EYE STATE'} · {currentExprSpec.id}
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span
-                    className="font-mono font-bold text-base"
-                    style={{ color: currentExprSpec.color }}
+            {/* Top-Left Cluster: Vitality Pips, Expression State, Score & Tactical 2D Mini-Radar */}
+            <div className="flex flex-col gap-2 pointer-events-auto">
+              <div className="bg-[rgba(10,12,24,0.88)] border-2 border-[#00E5FF] rounded-lg px-4 py-3 shadow-lg flex flex-wrap items-center gap-5">
+                {/* Discrete 5 Vitality Sockets */}
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">
+                    {isDa ? 'INTEGRITET (HP)' : 'CORE INTEGRITY (HP)'}
+                  </div>
+                  <div
+                    className="flex items-center gap-1.5"
+                    aria-label={`Health ${snapshot.hp} of ${snapshot.maxHp}`}
                   >
-                    {currentExprSpec.shape}
-                  </span>
-                  <span className="text-sm font-bold tracking-wide font-[family-name:var(--font-display)] text-white">
-                    {currentExprSpec.name}
-                  </span>
+                    {Array.from({ length: snapshot.maxHp }).map((_, i) => {
+                      const isFull = i < snapshot.hp;
+                      return (
+                        <svg
+                          key={i}
+                          viewBox="0 0 24 24"
+                          className="w-5 h-5"
+                          aria-hidden="true"
+                        >
+                          <rect
+                            x="3"
+                            y="3"
+                            width="18"
+                            height="18"
+                            rx="4"
+                            fill={isFull ? '#00E5FF' : '#12182B'}
+                            stroke={isFull ? '#FFFFFF' : '#3B486B'}
+                            strokeWidth="2"
+                          />
+                          {isFull && (
+                            <rect x="7" y="6" width="6" height="3" rx="1" fill="#FFFFFF" />
+                          )}
+                        </svg>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Active Expression State Readout */}
+                <div className="border-l border-slate-700 pl-4">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                    {isDa ? 'UDTRYK' : 'EYE STATE'} · {currentExprSpec.id}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span
+                      className="font-mono font-bold text-base"
+                      style={{ color: currentExprSpec.color }}
+                    >
+                      {currentExprSpec.shape}
+                    </span>
+                    <span className="text-sm font-bold tracking-wide font-[family-name:var(--font-display)] text-white">
+                      {currentExprSpec.name}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tabular-Nums Score & Accuracy */}
+                <div className="border-l border-slate-700 pl-4 font-mono tabular-nums">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    {isDa ? 'SANDHEDSSCORE · 99.7%' : 'TRUTH SCORE · ACC 99.7%'}
+                  </div>
+                  <div
+                    data-testid="hud-score"
+                    className="text-xl font-bold text-[#FFD600] leading-tight"
+                  >
+                    {Math.round(snapshot.score)}
+                  </div>
                 </div>
               </div>
 
-              {/* Tabular-Nums Score & Accuracy */}
-              <div className="border-l border-slate-700 pl-4 font-mono tabular-nums">
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                  {isDa ? 'SANDHEDSSCORE · 99.7%' : 'TRUTH SCORE · ACC 99.7%'}
-                </div>
-                <div
-                  data-testid="hud-score"
-                  className="text-xl font-bold text-[#FFD600] leading-tight"
-                >
-                  {Math.round(snapshot.score)}
-                </div>
-              </div>
+              {/* Tactical 2D PIXELVERSE-9 Mini-Radar */}
+              <AxiomTacticalRadar
+                playerX={snapshot.playerX}
+                playerZ={snapshot.playerZ}
+                playerAngle={snapshot.playerAngle}
+                isDashing={snapshot.isDashing}
+                dashCooldownTimer={snapshot.dashCooldownTimer}
+                tomes={snapshot.tomes}
+                enemies={snapshot.enemies}
+                lang={lang}
+              />
             </div>
 
             {/* Top-Right Cluster: Chapter Objective & Utility Buttons */}
@@ -663,6 +734,56 @@ export default function AxiomGameShellPage() {
                 >
                   <Cpu className="w-3.5 h-3.5" />
                   <span className="hidden lg:inline">Rust·SQL·D3 [R]</span>
+                </button>
+
+                {/* Command Palette [Ctrl+K] */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    setCommandPaletteOpen(true);
+                  }}
+                  aria-label="Open Command Palette [Ctrl+K]"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#1D1438] hover:bg-[#2C1D54] text-[#E040FB] border border-[#E040FB]/60 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Command className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Palet [Ctrl+K]</span>
+                </button>
+
+                {/* High-Res 3D Screenshot Export */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    handleTake3DScreenshot();
+                  }}
+                  aria-label="Take High-Res 3D PNG Screenshot"
+                  title="Export High-Res 3D PNG Screenshot"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-[#162447] hover:bg-[#203364] text-[#00E5FF] border border-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span className="hidden xl:inline">Foto</span>
+                </button>
+
+                {/* 73-frame o-Llama Pet Overlay Toggle [Ctrl+Shift+O] */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    setPetOverlayOpen((p) => !p);
+                  }}
+                  aria-label="Toggle 73-frame o-Llama Pet Overlay [Ctrl+Shift+O]"
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold border transition-colors cursor-pointer ${
+                    petOverlayOpen
+                      ? 'bg-[#FFD600]/20 border-[#FFD600] text-[#FFD600]'
+                      : 'bg-[#162447] hover:bg-[#203364] text-slate-300 border-slate-700'
+                  }`}
+                >
+                  <Smile className="w-3.5 h-3.5" />
+                  <span className="hidden xl:inline">Kæledyr</span>
                 </button>
 
                 <PWAOfflineStatusBar
@@ -1044,6 +1165,54 @@ export default function AxiomGameShellPage() {
         activeExpression={expression}
         onClose={() => setRustSqlD3Open(false)}
       />
+
+      {/* 9. Global Command Palette & UQCF Research Codex Modal [Ctrl+K / Ctrl+Shift+A] */}
+      <AxiomResearchCommandModal
+        isOpen={commandPaletteOpen}
+        lang={lang}
+        activeChassis={chassis}
+        activeExpression={expression}
+        onClose={() => setCommandPaletteOpen(false)}
+        onSelectChapter={(idx) => handleStartGame(idx)}
+        onSelectChassis={handleSelectChassis}
+        onSelectExpression={setExpression}
+        onTake3DScreenshot={handleTake3DScreenshot}
+        onOpenTruthAnalyzer={() => setTerminalOpen(true)}
+      />
+
+      {/* 10. Native Windows 11 Floating 73-Frame o-Llama Pet Overlay [Ctrl+Shift+O] */}
+      {petOverlayOpen && (
+        <aside
+          role="region"
+          aria-label="73-frame o-Llama Desktop Companion Pet"
+          className="fixed bottom-16 right-5 z-40 bg-[rgba(8,12,24,0.95)] border-2 border-[#FFD600] rounded-xl p-3 shadow-2xl backdrop-blur-md pointer-events-auto flex flex-col items-center gap-2 max-w-[200px]"
+        >
+          <div className="w-full flex items-center justify-between text-[11px] font-mono border-b border-slate-700 pb-1">
+            <span className="font-bold text-[#FFD600]">o-Llama Companion</span>
+            <button
+              type="button"
+              onClick={() => setPetOverlayOpen(false)}
+              aria-label="Close Pet Overlay"
+              className="text-slate-400 hover:text-white cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="w-24 h-24 flex items-center justify-center bg-[#050811] rounded-lg border border-slate-800 p-1">
+            <OLlamaPixelCanvas
+              mode="animated-row"
+              animationId="hvile"
+              scaleSize={120}
+              animateMotion={true}
+            />
+          </div>
+          <div className="text-[10px] text-center font-mono text-slate-300">
+            73-Frame V2 Rev 04
+            <div className="text-[#00E5FF] font-bold">EX-01 Nysgerrig</div>
+            <div className="text-[9px] text-slate-500">[Ctrl+Shift+O] skift</div>
+          </div>
+        </aside>
+      )}
     </main>
   );
 }

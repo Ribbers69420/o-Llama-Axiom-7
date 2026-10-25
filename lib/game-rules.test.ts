@@ -315,7 +315,7 @@ import {
   installAndVerifyLatestStableSystems,
 } from './system-package-manager.ts';
 
-test('System & Program Package Manager v2.4.0-stable verifies all 8 subsystems and Rust/WASM ABI 20400', () => {
+test('System & Program Package Manager v2.6.0-stable verifies all 8 subsystems and Rust/WASM ABI 20600', () => {
   const registry = getSystemProgramsRegistry();
   assert.equal(registry.length, 8);
   assert.equal(registry[0].id, 'SYS-01');
@@ -438,8 +438,168 @@ test('End-to-End 6-Chapter Campaign Simulation: Title -> Chapter 1..6 -> Victory
   assert.ok(updatedTrends.every((t) => t.truthScore >= t.baselineScore));
 });
 
+import {
+  UNICODE_LETTERLIKE_EXCEPTIONS,
+  MATH_ALPHABETS_LIST,
+  calculateBpeFertility,
+  normalizeNFKC,
+  QTF_BURRITOS,
+  ERRATA_REGISTER,
+  computeUltraTacoCII,
+  computeBrierScore,
+  classifyEpistemicRegister,
+  buildUafExportPackage,
+  UAF_NON_CLAIMS,
+  WINDOWS_11_JUMPLIST_TASKS,
+} from './uqcf-research-codex.ts';
 
+test('Unicode 16.0 Mathematical Alphabets & U+2100 Letterlike Exceptions (ℬ, ℰ, ℱ, ℋ, ℜ, ℚ, ℤ, ℎ) with NFKC normalization', () => {
+  assert.equal(MATH_ALPHABETS_LIST.length, 9);
+  assert.equal(UNICODE_LETTERLIKE_EXCEPTIONS.length, 8);
 
+  const glyphChars = UNICODE_LETTERLIKE_EXCEPTIONS.map((x) => x.char);
+  assert.deepEqual(glyphChars, ['ℬ', 'ℰ', 'ℱ', 'ℋ', 'ℜ', 'ℚ', 'ℤ', 'ℎ']);
 
+  // Verify that NFKC normalization decomposes each letterlike exception to ASCII
+  for (const ex of UNICODE_LETTERLIKE_EXCEPTIONS) {
+    const norm = normalizeNFKC(ex.char);
+    assert.equal(norm, ex.asciiEquivalent);
+  }
+});
 
+test('Empirical BPE Token Fertility Lab & Inflation Diagnostics (4.5x to 14.9x) for Qwen2.5 and o200k_base', () => {
+  const mathFormula = 'ℬ(x) + ℰ_t + ℱ[k] + ℋ|ψ⟩ = ℤ_{mod} · ℎ';
+  const report = calculateBpeFertility(mathFormula);
 
+  assert.equal(report.hasLetterlikeExceptions, true);
+  assert.ok(report.detectedExceptions.length >= 5);
+  assert.ok(report.inflationRatioQwen >= 3.0);
+  assert.ok(report.inflationRatioO200k >= 2.5);
+  assert.equal(normalizeNFKC(mathFormula).includes('ℬ'), false);
+  assert.equal(normalizeNFKC(mathFormula).includes('B'), true);
+
+  const asciiSimple = calculateBpeFertility('Simple ascii plain claim');
+  assert.equal(asciiSimple.hasLetterlikeExceptions, false);
+  assert.equal(asciiSimple.inflationRatioQwen, 1.0);
+});
+
+test('Quantum Taco Framework QTF v6.0: All 7 Burritos A-G with 70 Canonical Equations (Eq. 01 to 70)', () => {
+  assert.equal(QTF_BURRITOS.length, 7);
+  const burritoIds = QTF_BURRITOS.map((b) => b.id);
+  assert.deepEqual(burritoIds, ['A', 'B', 'C', 'D', 'E', 'F', 'G']);
+
+  let totalEquations = 0;
+  for (const b of QTF_BURRITOS) {
+    assert.equal(b.equations.length, 10);
+    totalEquations += b.equations.length;
+  }
+  assert.equal(totalEquations, 70);
+
+  // Check specific flagship equations
+  assert.equal(QTF_BURRITOS[0].equations[0].equationCode, 'Eq. 01');
+  assert.equal(QTF_BURRITOS[3].equations[0].equationCode, 'Eq. 31');
+  assert.equal(QTF_BURRITOS[3].equations[0].name, 'UltraTaco CII Formulation');
+  assert.equal(QTF_BURRITOS[6].equations[6].equationCode, 'Eq. 67');
+  assert.equal(QTF_BURRITOS[6].equations[6].name, 'Canonical Brier Score Formulation');
+
+  assert.equal(ERRATA_REGISTER.length, 11);
+  assert.equal(ERRATA_REGISTER[0].code, 'E1');
+  assert.equal(ERRATA_REGISTER[10].code, 'E11');
+});
+
+test('UltraTaco v5.2 Calibration Information Index (CII = 1 - JSD) and Jensen-Shannon Divergence bounds', () => {
+  // Identical distributions -> JSD = 0, CII = 1.0
+  const perfect = computeUltraTacoCII([0.5, 0.5], [0.5, 0.5]);
+  assert.equal(perfect.jsd, 0);
+  assert.equal(perfect.cii, 1);
+
+  // Slightly perturbed distributions -> high CII (~0.999)
+  const close = computeUltraTacoCII([0.4, 0.35, 0.25], [0.38, 0.36, 0.26]);
+  assert.ok(close.cii >= 0.99);
+  assert.ok(close.jsd <= 0.01);
+
+  // Divergent distributions -> bounded in [0, 1]
+  const divergent = computeUltraTacoCII([1, 0], [0, 1]);
+  assert.ok(divergent.jsd <= 1.0);
+  assert.ok(divergent.cii >= 0.0);
+});
+
+test('Brier Score Proper Scoring Rule (Eq. 67) & Epistemic Calibration Reliability metrics', () => {
+  const perfectForecasts = [
+    { forecast: 1.0, outcome: 1 },
+    { forecast: 0.0, outcome: 0 },
+    { forecast: 1.0, outcome: 1 },
+  ];
+  const perfectScore = computeBrierScore(perfectForecasts);
+  assert.equal(perfectScore.brierScore, 0.0);
+  assert.equal(perfectScore.calibrationTier, 'EXCELLENT');
+
+  const noisyForecasts = [
+    { forecast: 0.9, outcome: 1 }, // err 0.01
+    { forecast: 0.8, outcome: 1 }, // err 0.04
+    { forecast: 0.2, outcome: 0 }, // err 0.04
+    { forecast: 0.3, outcome: 0 }, // err 0.09
+  ];
+  const noisyScore = computeBrierScore(noisyForecasts);
+  assert.ok(noisyScore.brierScore < 0.1);
+  assert.equal(noisyScore.calibrationTier, 'EXCELLENT');
+
+  const poorForecasts = [
+    { forecast: 0.9, outcome: 0 },
+    { forecast: 0.1, outcome: 1 },
+  ];
+  const poorScore = computeBrierScore(poorForecasts);
+  assert.ok(poorScore.brierScore > 0.6);
+  assert.equal(poorScore.calibrationTier, 'UNRELIABLE');
+});
+
+test('Automatic Epistemic Register Tag Classification across [observed], [source-checked], [derived], [unverified], [speculative], [symbolic]', () => {
+  const obs = classifyEpistemicRegister('Measured sensor coordinates and pixel hitbox radius');
+  assert.equal(obs.tag, '[observed]');
+
+  const src = classifyEpistemicRegister('Documented in Production Bible v1.0 and Bohren et al citation');
+  assert.equal(src.tag, '[source-checked]');
+
+  const der = classifyEpistemicRegister('Derived from Eq. 31 via Rust/WASM FFI proof algorithms');
+  assert.equal(der.tag, '[derived]');
+
+  const spec = classifyEpistemicRegister('Maybe in the future this hypothetical scenario could happen');
+  assert.equal(spec.tag, '[speculative]');
+
+  const sym = classifyEpistemicRegister('The ancient quantum taco whispers with glowing aura');
+  assert.equal(sym.tag, '[symbolic]');
+
+  const unver = classifyEpistemicRegister('Arbitrary statement with no context');
+  assert.equal(unver.tag, '[unverified]');
+});
+
+test('Unified Artifact Framework (UAF v2.4) FIPS 180-4 SHA-256 Content Addressing, Ed25519 Sealing, and Anti-Drift Non-Claims (NC-01..03)', () => {
+  assert.equal(UAF_NON_CLAIMS.length, 3);
+  assert.equal(UAF_NON_CLAIMS[0].id, 'NC-01');
+  assert.equal(UAF_NON_CLAIMS[1].id, 'NC-02');
+  assert.equal(UAF_NON_CLAIMS[2].id, 'NC-03');
+
+  const fullPkg = buildUafExportPackage('full_codex');
+  assert.equal(fullPkg.uafVersion, '2.4.0');
+  assert.equal(fullPkg.fips180_4Compliance, true);
+  assert.equal(fullPkg.targetProfile, 'full_codex');
+  assert.ok(fullPkg.contentHashSha256.length >= 32);
+  assert.ok(fullPkg.ed25519SignatureStamp.startsWith('ed25519:sig:'));
+  assert.equal(fullPkg.nonClaims.length, 3);
+
+  const ingestPkg = buildUafExportPackage('llm_ingest');
+  assert.equal(ingestPkg.targetProfile, 'llm_ingest');
+  assert.ok(ingestPkg.payload.canonicalAxioms);
+});
+
+test('Windows 11 Integration Superpowers: axiom://app Protocol, JumpList Tasks, and Smoke-Test Verification', () => {
+  assert.equal(WINDOWS_11_JUMPLIST_TASKS.length, 4);
+  assert.equal(WINDOWS_11_JUMPLIST_TASKS[0].shortcut, 'Ctrl+Shift+A');
+  assert.equal(WINDOWS_11_JUMPLIST_TASKS[1].shortcut, 'Ctrl+Shift+V');
+  assert.equal(WINDOWS_11_JUMPLIST_TASKS[2].shortcut, 'Ctrl+Shift+O');
+  assert.equal(WINDOWS_11_JUMPLIST_TASKS[3].shortcut, 'Ctrl+K');
+
+  for (const task of WINDOWS_11_JUMPLIST_TASKS) {
+    assert.ok(task.protocolUri.startsWith('axiom://app/'));
+  }
+});
