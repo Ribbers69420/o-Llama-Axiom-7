@@ -1,5 +1,5 @@
 // ============================================================================
-// o-Llama · AXIOM-7 Internal System & Program Package Manager (v2.4.0 Stable LTS)
+// o-Llama · AXIOM-7 Internal System & Program Package Manager (v2.6.0 Stable LTS)
 // Inventories, verifies, and updates all 8 core systems and programs inside
 // o-Llama · AXIOM-7 (Rust/WASM Kernel, Offline SQL Engine, IEEE 802.3 CRC-32 +
 // Hamming(7,4) SEC-DED ECC Bus, D3.js Telemetry Studio, Three.js WebGL2
@@ -77,7 +77,7 @@ export function getSystemProgramsRegistry(
     : 'UP_TO_DATE_VERIFIED';
 
   const wasmSig = `AXIOM_WASM_ABI_${abiVersion}_LEN_${wasmBinary.byteLength}`;
-  const sqlSig = `AXIOM_SQL_V240_EP_${db.episodes.length}_PO_${db.ollama_poses.length}_CL_${db.truth_claims.length}`;
+  const sqlSig = `AXIOM_SQL_V260_EP_${db.episodes.length}_PO_${db.ollama_poses.length}_CL_${db.truth_claims.length}`;
 
   return [
     {
@@ -85,26 +85,26 @@ export function getSystemProgramsRegistry(
       programName: 'axiom_kernel.wasm',
       subsystemTitleDa: 'Rust / WebAssembly Fysik & Sandheds-Kerne',
       subsystemTitleEn: 'Rust / WebAssembly Physics & Truth Kernel',
-      installedVersion: '2.4.0-stable (rustc 1.85.0 · Edition 2024)',
-      latestStableVersion: '2.4.0-stable',
-      runtimeStack: 'Rust #![no_std] · wasm32-unknown-unknown · ABI 20400',
+      installedVersion: '2.6.0-stable (rustc 1.85.0 · Edition 2024)',
+      latestStableVersion: '2.6.0-stable',
+      runtimeStack: 'Rust #![no_std] · wasm32-unknown-unknown · ABI 20600',
       channel: 'STABLE_LTS',
       binarySizeBytes: wasmBinary.byteLength,
       crc32Hex: formatCrc32Hex(computeCrc32(wasmSig)),
       status: statusValue,
       lastVerifiedIso: nowIso,
       changelogDa:
-        'Opdateret til Rust Edition 2024 (1.85.0-stable) med 5 eksporterede #[no_mangle] FFI-funktioner inkl. get_kernel_abi_version() -> 20400.',
+        'Opdateret til Rust Edition 2024 (1.85.0-stable) med 5 eksporterede #[no_mangle] FFI-funktioner inkl. get_kernel_abi_version() -> 20600.',
       changelogEn:
-        'Upgraded to Rust Edition 2024 (1.85.0-stable) with 5 exported #[no_mangle] FFI functions including get_kernel_abi_version() -> 20400.',
+        'Upgraded to Rust Edition 2024 (1.85.0-stable) with 5 exported #[no_mangle] FFI functions including get_kernel_abi_version() -> 20600.',
     },
     {
       id: 'SYS-02',
       programName: 'axiom_sql_engine.db',
       subsystemTitleDa: 'Offline Relationel ANSI SQL Sandheds-Motor',
       subsystemTitleEn: 'Offline Relational ANSI SQL Truth Engine',
-      installedVersion: '3.48.0-stable (AXIOM-SQL v2.4.0)',
-      latestStableVersion: '3.48.0-stable',
+      installedVersion: '3.49.0-stable (AXIOM-SQL v2.6.0)',
+      latestStableVersion: '3.49.0-stable',
       runtimeStack: 'ANSI SQL · 4 Indexed Tables · LocalStorage Sync',
       channel: 'STABLE_LTS',
       binarySizeBytes: JSON.stringify(db).length,
@@ -121,12 +121,12 @@ export function getSystemProgramsRegistry(
       programName: 'axiom_ecc_bus.sys',
       subsystemTitleDa: 'IEEE 802.3 CRC-32 & Hamming(7,4) SEC-DED Intern Databus',
       subsystemTitleEn: 'IEEE 802.3 CRC-32 & Hamming(7,4) SEC-DED Internal Bus',
-      installedVersion: '2.4.0-stable (O(1) LUT Codec)',
-      latestStableVersion: '2.4.0-stable',
+      installedVersion: '2.6.0-stable (O(1) LUT Codec)',
+      latestStableVersion: '2.6.0-stable',
       runtimeStack: 'CRC-32 (0xEDB88320) · Hamming(7,4) LUT · 64B Parity Mirror',
       channel: 'STABLE_LTS',
       binarySizeBytes: 28672,
-      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_ECC_BUS_V240_LUT_SECDED')),
+      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_ECC_BUS_V260_LUT_SECDED')),
       status: statusValue,
       lastVerifiedIso: nowIso,
       changelogDa:
@@ -162,7 +162,7 @@ export function getSystemProgramsRegistry(
       runtimeStack: 'Three.js r186.1 · PCFShadowMap · GPU Drop-Shadow Neon Filter',
       channel: 'STABLE_LTS',
       binarySizeBytes: 98304,
-      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_THREE_R186_1_PCFSHADOW_V240')),
+      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_THREE_R186_1_PCFSHADOW_V260')),
       status: statusValue,
       lastVerifiedIso: nowIso,
       changelogDa:
@@ -175,12 +175,12 @@ export function getSystemProgramsRegistry(
       programName: 'axiom_chiptune_dsp.syn',
       subsystemTitleDa: 'Web Audio API Chiptune & Diegetisk Lyd-Synthesizer',
       subsystemTitleEn: 'Web Audio API Chiptune & Diegetic Sound Synthesizer',
-      installedVersion: '2.4.0-stable',
-      latestStableVersion: '2.4.0-stable',
+      installedVersion: '2.6.0-stable',
+      latestStableVersion: '2.6.0-stable',
       runtimeStack: 'Web Audio API · Polyphonic Pulse/Triangle/Noise Oscillators',
       channel: 'STABLE_LTS',
       binarySizeBytes: 8192,
-      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_AUDIO_SYNTH_V240_STABLE')),
+      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_AUDIO_SYNTH_V260_STABLE')),
       status: statusValue,
       lastVerifiedIso: nowIso,
       changelogDa:
@@ -193,30 +193,30 @@ export function getSystemProgramsRegistry(
       programName: 'pwa_service_worker.sw',
       subsystemTitleDa: 'Offline-First PWA Service Worker & App-Installer',
       subsystemTitleEn: 'Offline-First PWA Service Worker & App Installer',
-      installedVersion: '2.4.0-stable (axiom7-offline-v2.4.0-stable)',
-      latestStableVersion: '2.4.0-stable',
-      runtimeStack: 'Service Worker API · CacheStorage v2.4.0 · WebManifest',
+      installedVersion: '2.6.0-stable (axiom7-offline-v2.6.0-stable)',
+      latestStableVersion: '2.6.0-stable',
+      runtimeStack: 'Service Worker API · CacheStorage v2.6.0 · WebManifest',
       channel: 'STABLE_LTS',
       binarySizeBytes: 4096,
-      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_SW_CACHE_V2_4_0_STABLE')),
+      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_SW_CACHE_V2_6_0_STABLE')),
       status: statusValue,
       lastVerifiedIso: nowIso,
       changelogDa:
-        'Opgraderet cache-manifest til axiom7-offline-v2.4.0-stable med 100% offline fallback for alle 3D-kapitler, SQL-tabeller og WASM-moduler.',
+        'Opgraderet cache-manifest til axiom7-offline-v2.6.0-stable med 100% offline fallback for alle 3D-kapitler, SQL-tabeller og WASM-moduler.',
       changelogEn:
-        'Upgraded cache manifest to axiom7-offline-v2.4.0-stable with 100% offline fallback for all 3D chapters, SQL tables, and WASM modules.',
+        'Upgraded cache manifest to axiom7-offline-v2.6.0-stable with 100% offline fallback for all 3D chapters, SQL tables, and WASM modules.',
     },
     {
       id: 'SYS-08',
       programName: 'ollama_bible_codex.rom',
-      subsystemTitleDa: 'o-Llama Designbog (Poses 01–14) & Production Bible v2.4',
-      subsystemTitleEn: 'o-Llama Design Book (Poses 01–14) & Production Bible v2.4',
-      installedVersion: '2.4.0-stable (React 19.2.1 · Next.js 15.4.9)',
-      latestStableVersion: '2.4.0-stable',
-      runtimeStack: 'Next.js 15.4.9 · React 19.2.1 · Tailwind CSS 4.1.11',
+      subsystemTitleDa: 'o-Llama Designbog (Poses 01–14) & Production Bible v2.6',
+      subsystemTitleEn: 'o-Llama Design Book (Poses 01–14) & Production Bible v2.6',
+      installedVersion: '2.6.0-stable (React 19.2.1 · Next.js 15.5.28 · QTF v6.0)',
+      latestStableVersion: '2.6.0-stable',
+      runtimeStack: 'Next.js 15.5.28 · React 19.2.1 · Tailwind CSS 4.1.11 · QTF v6.0',
       channel: 'STABLE_LTS',
       binarySizeBytes: 54272,
-      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_BIBLE_CODEX_14_POSES_V240')),
+      crc32Hex: formatCrc32Hex(computeCrc32('AXIOM_BIBLE_CODEX_14_POSES_V260')),
       status: statusValue,
       lastVerifiedIso: nowIso,
       changelogDa:
@@ -234,7 +234,7 @@ export function getSystemProgramsRegistry(
 export function installAndVerifyLatestStableSystems(): SystemUpdateReport {
   const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
-  // 1. Verify Rust/WASM Kernel v2.4.0 ABI Handshake
+  // 1. Verify Rust/WASM Kernel v2.6.0 ABI Handshake
   const kernel = getRustWasmKernel();
   const kernelAbi = kernel.get_kernel_abi_version();
 
@@ -246,7 +246,7 @@ export function installAndVerifyLatestStableSystems(): SystemUpdateReport {
   const eccReports = runEccScanAndRepair();
   const totalSectors = eccReports.reduce((acc, r) => acc + r.totalBlocks, 0);
 
-  // 4. Sync Offline SQL Database & record the v2.4.0 system upgrade in telemetry_logs
+  // 4. Sync Offline SQL Database & record the v2.6.0 system upgrade in telemetry_logs
   const db = getOfflineSqlDatabase();
   insertTelemetryLogRow({
     chapter_id: 'Chapter 6',
@@ -261,7 +261,7 @@ export function installAndVerifyLatestStableSystems(): SystemUpdateReport {
 
   saveDataToEccSlot({
     slotId: 'SLOT-01',
-    label: 'Primary Offline SQL DB Backup (v2.4.0-stable Auto-Synced)',
+    label: 'Primary Offline SQL DB Backup (v2.6.0-stable Auto-Synced)',
     category: 'SQL_DB_SNAPSHOT',
     payload: JSON.stringify(getOfflineSqlDatabase()),
   });
@@ -275,7 +275,7 @@ export function installAndVerifyLatestStableSystems(): SystemUpdateReport {
 
   transmitInternalDataPacket({
     channel: 'CHECKPOINT_SYNC',
-    sourceModule: 'System Package Manager v2.4.0',
+    sourceModule: 'System Package Manager v2.6.0',
     destinationModule: 'All 8 AXIOM-7 Subsystems',
     chapterId: 'Chapter 6',
     truthScore: 9980,

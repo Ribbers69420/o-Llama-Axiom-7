@@ -1,5 +1,5 @@
-// o-Llama · AXIOM-7 Offline-First Service Worker (PIXELVERSE-9 · v2.4.0 Stable LTS)
-const CACHE_NAME = 'axiom7-offline-v2.4.0-stable';
+// o-Llama · AXIOM-7 Offline-First Service Worker (PIXELVERSE-9 · v2.6.0 Stable LTS)
+const CACHE_NAME = 'axiom7-offline-v2.6.0-stable';
 const PRECACHE_URLS = [
   '/',
   '/manifest.webmanifest',
@@ -8,6 +8,10 @@ const PRECACHE_URLS = [
   '/pwa-512x512.png',
   '/pwa-maskable-512x512.png',
   '/apple-touch-icon.png',
+  '/assets/aktiv-v1.png',
+  '/assets/kandidat-v2-rev04.png',
+  '/fonts/UQCFAlchemical.woff2',
+  '/fonts/UQCFMathGlyphs.woff2',
 ];
 
 self.addEventListener('install', (event) => {

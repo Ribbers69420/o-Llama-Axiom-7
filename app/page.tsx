@@ -297,7 +297,10 @@ export default function AxiomGameShellPage() {
   }, []);
 
   return (
-    <main className="relative w-screen h-screen overflow-hidden select-none font-[family-name:var(--font-sans)]">
+    <main
+      suppressHydrationWarning
+      className="relative w-screen h-screen overflow-hidden select-none font-[family-name:var(--font-sans)]"
+    >
       {/* 1. Isolated Full-Viewport 3D WebGL Scene */}
       <AxiomThreeCanvas
         status={status}

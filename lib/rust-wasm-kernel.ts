@@ -38,12 +38,12 @@ export interface WasmBenchmarkResult {
 }
 
 export const RUST_KERNEL_SOURCE = `#![no_std]
-// Crate: rust/axiom_kernel/src/lib.rs · v2.4.0 Stable LTS (Edition 2024, rustc 1.85.0)
+// Crate: rust/axiom_kernel/src/lib.rs · v2.6.0 Stable LTS (Edition 2024, rustc 1.85.0)
 // Target: wasm32-unknown-unknown
 
 #[no_mangle]
 pub extern "C" fn get_kernel_abi_version() -> i32 {
-    20400 // v2.4.0-stable
+    20600 // v2.6.0-stable
 }
 
 #[no_mangle]
@@ -143,7 +143,7 @@ function encodeString(str: string): number[] {
 }
 
 /**
- * Assembles the exact, deterministic WebAssembly binary (`.wasm`) for `axiom_kernel` v2.4.0.
+ * Assembles the exact, deterministic WebAssembly binary (`.wasm`) for `axiom_kernel` v2.6.0.
  */
 export function buildAxiomWasmBinary(): Uint8Array {
   const I32 = 0x7f;

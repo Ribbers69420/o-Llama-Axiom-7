@@ -154,7 +154,7 @@ export default function RustSqlD3Modal({
   const [checkpointDebugResult, setCheckpointDebugResult] =
     useState<CheckpointDebugSessionResult | null>(null);
 
-  // System & Program Package Manager (v2.4.0 Stable LTS) State
+  // System & Program Package Manager (v2.6.0 Stable LTS) State
   const [systemPrograms, setSystemPrograms] = useState<
     AxiomSystemProgramSpec[]
   >(() => getSystemProgramsRegistry());
@@ -1101,7 +1101,7 @@ export default function RustSqlD3Modal({
           </div>
 
           <div className="text-[11px] font-mono text-slate-400">
-            ABI: <span className="text-[#00E676]">v2.4.0 ({benchResult.kernelAbiVersion})</span> · WASM:{' '}
+            ABI: <span className="text-[#00E676]">{AXIOM_RELEASE_VERSION} ({benchResult.kernelAbiVersion})</span> · WASM:{' '}
             <span className="text-[#00F0FF]">{benchResult.wasmByteLength}B</span> · ECC Vault:{' '}
             <span className="text-[#FFD600]">
               {formatByteSize(vaultSummary.totalPayloadBytes)}
@@ -2119,7 +2119,7 @@ export default function RustSqlD3Modal({
           )}
 
           {/* ================================================================
-              TAB 6: o-Llama · AXIOM-7 System & Program Package Manager (v2.4.0)
+              TAB 6: o-Llama · AXIOM-7 System & Program Package Manager (v2.6.0)
               ================================================================ */}
           {activeTab === 'system-updates' && (
             <div className="space-y-4">
@@ -2139,8 +2139,8 @@ export default function RustSqlD3Modal({
                           ? systemUpdateReport.summaryDa
                           : systemUpdateReport.summaryEn
                         : lang === 'da'
-                        ? 'Alle 8 interne systemer og programmer kører på seneste stabile LTS-udgave (v2.4.0-stable).'
-                        : 'All 8 internal systems and programs are running the latest stable LTS release (v2.4.0-stable).'}
+                        ? `Alle 8 interne systemer og programmer kører på seneste stabile LTS-udgave (${AXIOM_RELEASE_VERSION}).`
+                        : `All 8 internal systems and programs are running the latest stable LTS release (${AXIOM_RELEASE_VERSION}).`}
                     </h3>
                   </div>
                 </div>
@@ -2153,8 +2153,8 @@ export default function RustSqlD3Modal({
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   {lang === 'da'
-                    ? 'Opdater & Verificer Alle 8 Systemer (v2.4.0)'
-                    : 'Update & Verify All 8 Systems (v2.4.0)'}
+                    ? `Opdater & Verificer Alle 8 Systemer (${AXIOM_RELEASE_VERSION})`
+                    : `Update & Verify All 8 Systems (${AXIOM_RELEASE_VERSION})`}
                 </button>
               </div>
 
@@ -2181,7 +2181,7 @@ export default function RustSqlD3Modal({
                 <div className="p-3 rounded-xl bg-[#0B1224] border border-slate-800">
                   <div className="text-[10px] text-slate-400">OFFLINE SW CACHE</div>
                   <div className="text-sm font-bold text-[#EA80FC] mt-0.5">
-                    axiom7-offline-v2.4.0-stable
+                    axiom7-offline-v2.6.0-stable
                   </div>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { Download, Wifi, WifiOff, CheckCircle2, X } from 'lucide-react';
 import type { AppLanguage } from '@/lib/ollama-bible-spec';
 
@@ -14,29 +14,89 @@ interface PWAOfflineStatusBarProps {
   onOpenRustSqlD3?: () => void;
 }
 
+const emptySubscribe = () => () => {};
+
+function subscribeOnline(callback: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('online', callback);
+  window.addEventListener('offline', callback);
+  return () => {
+    window.removeEventListener('online', callback);
+    window.removeEventListener('offline', callback);
+  };
+}
+
+function getOnlineSnapshot() {
+  return typeof navigator !== 'undefined' ? navigator.onLine : true;
+}
+
+function getServerOnlineSnapshot() {
+  return true;
+}
+
+function subscribeInstalled(callback: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  const mql = window.matchMedia('(display-mode: standalone)');
+  mql.addEventListener('change', callback);
+  window.addEventListener('appinstalled', callback);
+  return () => {
+    mql.removeEventListener('change', callback);
+    window.removeEventListener('appinstalled', callback);
+  };
+}
+
+function getInstalledSnapshot() {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as unknown as { standalone?: boolean }).standalone === true
+  );
+}
+
+function getServerInstalledSnapshot() {
+  return false;
+}
+
+function getIOSSnapshot() {
+  if (typeof navigator === 'undefined') return false;
+  return /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+}
+
+function getServerIOSSnapshot() {
+  return false;
+}
+
 export default function PWAOfflineStatusBar({
   lang,
   onOpenRustSqlD3,
 }: PWAOfflineStatusBarProps) {
-  const [isOnline, setIsOnline] = useState<boolean>(true);
-  const [swReady, setSwReady] = useState<boolean>(false);
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+  const isOnline = useSyncExternalStore(
+    subscribeOnline,
+    getOnlineSnapshot,
+    getServerOnlineSnapshot
+  );
+  const isInstalled = useSyncExternalStore(
+    subscribeInstalled,
+    getInstalledSnapshot,
+    getServerInstalledSnapshot
+  );
+  const isIOS = useSyncExternalStore(
+    emptySubscribe,
+    getIOSSnapshot,
+    getServerIOSSnapshot
+  );
+
+  const [swReady, setSwReady] = useState<boolean>(true);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState<boolean>(false);
-  const [isIOS, setIsIOS] = useState<boolean>(false);
   const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
 
   useEffect(() => {
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-    const ua = window.navigator.userAgent.toLowerCase();
-    queueMicrotask(() => {
-      setIsOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
-      setIsInstalled(isStandalone);
-      setIsIOS(/iphone|ipad|ipod/.test(ua));
-    });
-
-    // Register & update Offline Service Worker (/sw.js · v2.4.0-stable)
+    // Register & update Offline Service Worker (/sw.js · v2.6.0-stable)
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
         .register('/sw.js')
@@ -49,33 +109,17 @@ export default function PWAOfflineStatusBar({
         .catch(() => {
           setSwReady(true);
         });
-    } else {
-      queueMicrotask(() => setSwReady(true));
     }
-
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
 
-    const handleAppInstalled = () => {
-      setIsInstalled(true);
-      setDeferredPrompt(null);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
@@ -84,7 +128,6 @@ export default function PWAOfflineStatusBar({
       await deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
-        setIsInstalled(true);
         setDeferredPrompt(null);
       }
       return;
@@ -92,18 +135,56 @@ export default function PWAOfflineStatusBar({
     setShowInstallModal(true);
   };
 
-  return (
-    <>
-      <div className="flex items-center gap-1.5">
-        {/* Offline / Online WASM+SQL v2.4.0 Stable Status Pill */}
+  if (!mounted) {
+    return (
+      <div className="flex items-center gap-1.5" suppressHydrationWarning>
         <button
           type="button"
           onClick={onOpenRustSqlD3}
           data-testid="status-offline-badge"
+          suppressHydrationWarning
           title={
             lang === 'da'
-              ? 'o-Llama · AXIOM-7 v2.4.0 Stable LTS (Rust/WASM, SQL, D3 & Service Worker)'
-              : 'o-Llama · AXIOM-7 v2.4.0 Stable LTS (Rust/WASM, SQL, D3 & Service Worker)'
+              ? 'o-Llama · AXIOM-7 v2.6.0 Stable LTS (Rust/WASM, SQL, D3 & Service Worker)'
+              : 'o-Llama · AXIOM-7 v2.6.0 Stable LTS (Rust/WASM, SQL, D3 & Service Worker)'
+          }
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono border transition-colors cursor-pointer bg-[#091426]/90 border-[#00E676]/50 text-[#00E676] hover:border-[#00E676]"
+        >
+          <Wifi className="w-3 h-3 text-[#00E676]" />
+          <span suppressHydrationWarning>
+            {lang === 'da' ? 'v2.6.0 STABIL · WASM+SQL' : 'v2.6.0 STABLE · WASM+SQL'}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={handleInstallClick}
+          data-testid="btn-pwa-install"
+          suppressHydrationWarning
+          aria-label={lang === 'da' ? 'Installer Offline Spil (PWA)' : 'Install Offline Game (PWA)'}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wider bg-[#121D38] hover:bg-[#1A294E] text-[#00F0FF] border border-[#00F0FF]/50 transition-colors cursor-pointer"
+        >
+          <Download className="w-3 h-3" />
+          <span className="hidden sm:inline" suppressHydrationWarning>
+            {lang === 'da' ? 'Installer App' : 'Install PWA'}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-center gap-1.5" suppressHydrationWarning>
+        {/* Offline / Online WASM+SQL v2.6.0 Stable Status Pill */}
+        <button
+          type="button"
+          onClick={onOpenRustSqlD3}
+          data-testid="status-offline-badge"
+          suppressHydrationWarning
+          title={
+            lang === 'da'
+              ? 'o-Llama · AXIOM-7 v2.6.0 Stable LTS (Rust/WASM, SQL, D3 & Service Worker)'
+              : 'o-Llama · AXIOM-7 v2.6.0 Stable LTS (Rust/WASM, SQL, D3 & Service Worker)'
           }
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
             isOnline
@@ -116,16 +197,16 @@ export default function PWAOfflineStatusBar({
           ) : (
             <WifiOff className="w-3 h-3 text-[#FFD600] animate-pulse" />
           )}
-          <span>
+          <span suppressHydrationWarning>
             {isOnline
               ? swReady
                 ? lang === 'da'
-                  ? 'v2.4.0 STABIL · WASM+SQL'
-                  : 'v2.4.0 STABLE · WASM+SQL'
-                : 'SYNCING SW v2.4.0'
+                  ? 'v2.6.0 STABIL · WASM+SQL'
+                  : 'v2.6.0 STABLE · WASM+SQL'
+                : 'SYNCING SW v2.6.0'
               : lang === 'da'
-              ? 'OFFLINE v2.4.0 · LOKAL SQL'
-              : 'OFFLINE v2.4.0 · LOCAL SQL'}
+              ? 'OFFLINE v2.6.0 · LOKAL SQL'
+              : 'OFFLINE v2.6.0 · LOCAL SQL'}
           </span>
         </button>
 
@@ -135,11 +216,12 @@ export default function PWAOfflineStatusBar({
             type="button"
             onClick={handleInstallClick}
             data-testid="btn-pwa-install"
+            suppressHydrationWarning
             aria-label={lang === 'da' ? 'Installer Offline Spil (PWA)' : 'Install Offline Game (PWA)'}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wider bg-[#121D38] hover:bg-[#1A294E] text-[#00F0FF] border border-[#00F0FF]/50 transition-colors cursor-pointer"
           >
             <Download className="w-3 h-3" />
-            <span className="hidden sm:inline">
+            <span className="hidden sm:inline" suppressHydrationWarning>
               {lang === 'da' ? 'Installer App' : 'Install PWA'}
             </span>
           </button>
